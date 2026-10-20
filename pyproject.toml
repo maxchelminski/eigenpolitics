@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eigenpolitics"
+version = "1.0.0"
+description = "Reproducible spectral analysis of United States Senate roll-call networks"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.26,<3",
+  "pandas>=2.2,<3",
+  "scipy>=1.12,<2",
+  "networkx>=3.2,<4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+figures = ["matplotlib>=3.8,<4"]
+
+[project.scripts]
+eigenpolitics-refresh = "eigenpolitics.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["eigenpolitics*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

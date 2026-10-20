@@ -1,0 +1,66 @@
+name: Refresh data and deploy Pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  schedule:
+    # Opt-in only: the job is skipped until ENABLE_PAGES is set to "true".
+    - cron: "23 10 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eigenpolitics-pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: ${{ vars.ENABLE_PAGES == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install data pipeline dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run regression tests
+        run: python -m unittest discover -s tests -v
+      - name: Restore validated Voteview source history
+        uses: actions/cache@v4
+        with:
+          path: .cache/voteview
+          key: voteview-source-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: voteview-source-v1-
+      - name: Refresh the current and previous Senate
+        # Every job starts from the checked-in history. Refresh the prior term
+        # too so its final votes are retained after a Congress rollover.
+        run: |
+          PREVIOUS=$(python -c "from eigenpolitics.analysis import current_congress; print(max(1, current_congress() - 1))")
+          python scripts/refresh_data.py --congress current "$PREVIOUS" --refresh
+      - name: Rebuild full history from verified caches
+        # Missing or evicted caches are fetched again. This preserves updated
+        # historical inputs across jobs without committing generated data.
+        run: python scripts/refresh_data.py
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload the static site
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

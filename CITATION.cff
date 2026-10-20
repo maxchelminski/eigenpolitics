@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+message: >-
+  Please cite the original thesis when discussing this research. Cite Voteview
+  separately for its source data, and include the Congress and retrieval date
+  when reporting results from the refreshed research companion.
+type: software
+title: "Eigenpolitics: Research Companion to Eigen-Politics"
+authors:
+  - family-names: Chelminski
+    given-names: Maximilian
+abstract: >-
+  A local-first interactive research companion and refreshable data pipeline
+  for spectral analysis of United States Senate roll-call voting networks.
+  The repository preserves the original 2026 Master's thesis and analysis
+  scripts. Refreshed companion results are not an exact reproduction of the
+  original thesis snapshot.
+keywords:
+  - spectral graph theory
+  - United States Senate
+  - political polarization
+  - roll-call voting
+  - graph Laplacian
+preferred-citation:
+  type: thesis
+  title: "Eigen-Politics: A Spectral Analysis of the US Senate"
+  authors:
+    - family-names: Chelminski
+      given-names: Maximilian
+  year: 2026
+  thesis-type: "Master's thesis"
+  institution:
+    name: "Graduate School of Arts and Sciences, Quantitative Methods in the Social Sciences"

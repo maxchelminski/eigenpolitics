@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#102a2a">
+  <meta name="description" content="Explore the spectral geometry of United States Senate voting networks. An interactive research companion to Eigenpolitics.">
+  <title>Eigenpolitics — The geometry of the Senate</title>
+  <link rel="icon" href="assets/mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#explorer">Skip to the explorer</a>
+  <header class="masthead">
+    <a class="brand" href="./" aria-label="Eigenpolitics home"><img src="assets/mark.svg" alt="" width="32" height="32">eigenpolitics<span class="brand-dot">.</span></a>
+    <nav aria-label="Main navigation"><a href="#explorer">Explorer</a><a href="#history">Through time</a><a href="#research">The research <span aria-hidden="true">↗</span></a></nav>
+    <span class="edition">A SENATE RESEARCH OBSERVATORY</span>
+  </header>
+  <main>
+    <section class="intro" aria-labelledby="page-title">
+      <div>
+        <p class="eyebrow"><span class="small-line"></span> POLITICAL NETWORKS / SPECTRAL GRAPH THEORY</p>
+        <h1 id="page-title">The geometry of<br>a divided <em>Senate.</em></h1>
+      </div>
+      <div class="intro-note">
+        <p>Every vote leaves a pattern. Explore how those patterns connect senators, reveal divisions, and change across American history.</p>
+        <div class="snapshot"><span class="status-dot"></span><span id="snapshot-status">Loading the research snapshot…</span></div>
+        <p class="micro">Computed from Voteview roll calls. Updates appear when the data pipeline runs.</p>
+      </div>
+    </section>
+    <div id="load-error" class="error-message" role="alert" hidden></div>
+    <div id="workspace" aria-busy="true">
+      <section id="explorer" class="explorer" aria-labelledby="explorer-title">
+        <div class="section-top">
+          <div class="section-title"><span class="section-number">01</span><h2 id="explorer-title">Inside the chamber</h2></div>
+          <div class="congress-control"><label for="congress-select">CONGRESS</label><select id="congress-select" disabled><option>Loading…</option></select><button id="compare-button" class="text-button" type="button" aria-pressed="false">Compare with 1979–81 <span aria-hidden="true">↗</span></button></div>
+        </div>
+        <div class="stats-grid" id="stats" aria-live="polite"></div>
+        <div class="chart-layout">
+          <div class="plot-panel">
+            <div class="plot-heading"><div><p class="eyebrow" id="plot-eyebrow">SPECTRAL EMBEDDING</p><h3 id="plot-title">Two dimensions of division</h3></div><div class="view-tabs" role="group" aria-label="Chart view"><button type="button" data-view="spectral" aria-pressed="true">Geometry</button><button type="button" data-view="network" aria-pressed="false">Network</button><button type="button" data-view="brokerage" aria-pressed="false">Brokerage</button></div></div>
+            <div class="plot-toolbar"><div id="party-legend" class="legend" aria-label="Party legend"></div><label class="search-label" for="senator-search"><span aria-hidden="true">⌕</span><input id="senator-search" type="search" placeholder="Find a senator" autocomplete="off"></label></div>
+            <div class="network-controls" id="network-controls" hidden><label for="edge-threshold">Show ties with weight ≥ <output id="threshold-value">0.80</output></label><input type="range" id="edge-threshold" min="0.5" max="0.99" step="0.01" value="0.80"><span id="edge-count"></span></div>
+            <div id="main-chart" class="main-chart" aria-live="polite"></div>
+            <div id="search-results" class="search-results" hidden></div>
+            <div class="plot-footer"><span><span class="tiny-circle"></span> Select a senator to inspect their position</span><span id="plot-range"></span></div>
+          </div>
+          <aside class="insight-panel" aria-labelledby="insight-title">
+            <p class="eyebrow">READING THE NETWORK</p>
+            <h3 id="insight-title">A chamber,<br>reconstructed.</h3>
+            <p id="view-description">Each point is a senator. Nearby positions reflect similar patterns in the weighted voting network. Party colors are added after the analysis.</p>
+            <div id="senator-detail" class="senator-detail"><span class="detail-label">EXPLORE A POINT</span><p>Select a dot or search by name to see a senator’s coordinates and brokerage.</p></div>
+            <div class="interpretation"><span class="note-mark">↳</span><p id="interpretation-text">The axes come from the graph’s normalized Laplacian. They are structural coordinates, not calibrated ideology scores.</p></div>
+          </aside>
+        </div>
+        <div id="comparison-panel" class="comparison-panel" hidden></div>
+        <p id="data-notes" class="data-notes"></p>
+      </section>
+      <section id="history" class="history-section" aria-labelledby="history-title">
+        <div class="section-top"><div class="section-title"><span class="section-number">02</span><h2 id="history-title">A longer view</h2></div><label class="metric-control" for="history-metric">MEASURE<select id="history-metric"><option value="fiedler_value">Spectral connectivity · λ₂</option><option value="sweep_conductance">Sweep conductance</option><option value="mean_betweenness">Mean brokerage</option><option value="gini_betweenness">Brokerage inequality · Gini</option></select></label></div>
+        <div class="history-panel"><div class="history-heading"><h3 id="history-chart-title">How connected is the chamber?</h3><p id="history-description">Lower λ₂ indicates weaker connectivity in this weighted voting graph.</p></div><div id="history-chart" class="history-chart"></div><div class="history-footer"><span>One point per Congress. Select a point to explore it above.</span><span id="history-range"></span></div></div>
+      </section>
+    </div>
+    <section id="research" class="research-section" aria-labelledby="research-title">
+      <div class="research-intro"><p class="eyebrow">03 / FROM THE THESIS</p><h2 id="research-title">From roll calls<br>to structure.</h2><p>Eigenpolitics uses the mathematics of networks to study the Senate. This explorer extends the original master’s thesis with reproducible data and an inspectable, evolving research companion.</p><a class="paper-link" href="research/thesis.pdf" target="_blank" rel="noopener">Read the master’s thesis <span aria-hidden="true">↗</span></a></div>
+      <div class="method-steps"><article><span>01</span><div><h3>Encode the votes</h3><p>Yea, paired yea, and announced yea become +1; corresponding nay positions become −1. Other recorded codes and missing entries become 0. Attendance and periods outside a member’s service therefore matter.</p></div></article><article><span>02</span><div><h3>Construct the graph</h3><p>Pearson correlation becomes a nonnegative weight, (r + 1) / 2. Remove self-loops and decompose the normalized graph Laplacian to reveal its spectral geometry.</p></div></article><article><span>03</span><div><h3>Inspect the divisions</h3><p>λ₂ summarizes connectivity. A Fiedler sweep estimates a low-conductance cut. Betweenness measures shortest-path brokerage in a thresholded network.</p></div></article></div>
+    </section>
+    <section class="methodology-section" aria-label="Methodology and data details">
+      <details><summary>What these measures can—and cannot—tell us</summary><div class="details-body"><p>These are descriptive properties of a constructed voting graph. They do not measure a senator’s influence directly, establish causation, or isolate polarization from the agenda and attendance. A Congress is a two-year cohort, so replacement members can appear alongside predecessors.</p><p>The eigenvector sign is arbitrary. Display orientation is made consistent by convention; coordinates across Congresses are not a shared ideological scale. Projection proximity is only a partial view of the full graph. Network ties show transformed correlation, not a percentage of votes in agreement.</p><p>The displayed sweep conductance is the best cut found along a sorted spectral coordinate, an upper-bound estimate of minimum conductance—not an exact Cheeger constant. The Gini coefficient describes the distribution of computed brokerage.</p></div></details>
+      <details><summary>How this companion differs from the original scripts</summary><div class="details-body"><p>The original thesis files and scripts are preserved in the repository. This version removes self-loops consistently, assigns edge distances on the graph actually used for betweenness, and avoids zero-length paths. The normalized spectral sweep uses a degree-adjusted coordinate. These corrections can change results relative to the thesis.</p><p>Current data may also differ from the thesis’s data snapshot. Consult the repository’s methodology and provenance documentation before comparing exact values.</p></div></details>
+      <details><summary>Data provenance and refresh status</summary><div class="details-body"><p>Source: <a href="https://voteview.com/data" target="_blank" rel="noopener">Voteview congressional roll-call data</a>. The site reads a locally generated snapshot and checks for a new manifest periodically while open. Collection and computation happen in the Python pipeline, not in the browser.</p><pre id="provenance-output">Loading provenance…</pre><a id="download-congress" href="data/index.json" download>Download selected Congress JSON</a><span class="download-divider">/</span><button class="inline-button" id="download-csv" type="button">Download historical metrics CSV</button></div></details>
+    </section>
+  </main>
+  <footer><a class="brand footer-brand" href="./">eigenpolitics<span class="brand-dot">.</span></a><p>Spectral graph theory meets the United States Senate.</p><a href="https://voteview.com/" target="_blank" rel="noopener">Data by Voteview ↗</a><span class="footer-tag">RESEARCH IN PROGRESS</span></footer>
+  <div id="toast" role="status" class="toast" hidden></div>
+</body>
+</html>

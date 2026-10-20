@@ -1,0 +1,29 @@
+# Python environments, caches, and local tooling
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+.coverage
+htmlcov/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Temporary output; curated figures, site/data, original thesis files,
+# and the public site/research/thesis.pdf copy stay tracked
+tmp/
+temp/
+.artifacts/
+node_modules/
+~$*.docx
