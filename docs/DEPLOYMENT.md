@@ -6,6 +6,12 @@ For local updates while the computer is awake, install the analysis dependencies
 
 The included Pages workflow is an opt-in path to a hosted research companion. It remains skipped until the repository variable `ENABLE_PAGES` is set to `true`.
 
+## Recommended first deployment
+
+Use GitHub Pages for the public thesis site. The explorer is a static site: visitors' browsers draw the charts from published JSON, while a separate Python job refreshes that JSON. GitHub can host the files and run the existing daily refresh workflow, so neither an always-on home computer nor a purchased domain is necessary.
+
+An NVIDIA Jetson Orin Nano Super can also serve the site or run the refresh pipeline. That is useful for learning self-hosting, but entails maintaining the device, web server, and public connection. The current analysis uses CPU-based NumPy, pandas, SciPy, and NetworkX; its GPU is not used.
+
 ## A public address without buying a domain
 
 GitHub Pages serves static HTML, CSS, JavaScript, and JSON. A project site normally receives `https://<owner>.github.io/<repository>/`; a custom domain is optional. Public repositories can use Pages with GitHub Free. See [GitHub's description of Pages and default addresses](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages).
@@ -46,7 +52,21 @@ If download, analysis, tests, or deployment fails, the workflow fails and the pr
 - Disable the workflow in GitHub Actions to stop it entirely.
 - Use GitHub Pages settings to unpublish the site when desired.
 
-GitHub may delay scheduled runs and disables scheduled workflows in public repositories after prolonged inactivity. Review [GitHub's schedule event documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule) when deciding whether this cadence meets your needs.
+GitHub may delay scheduled runs and disables scheduled workflows in public repositories after 60 days without repository activity. The last deployed site remains online, but its data stops refreshing until updates resume. Review [GitHub's schedule event documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule) when deciding whether this cadence meets your needs.
+
+## Using an always-on Jetson
+
+This is an optional setup outline, not an installed configuration. The device has not been accessed or tested.
+
+1. Clone or copy the repository onto the Jetson. For data refreshes, create a Python virtual environment and install `requirements.txt`. The package requires Python 3.10 or newer; the documented development setup and GitHub workflow use 3.11 or newer. Check the device's Python version and ARM dependency installation before relying on unattended updates.
+2. Configure a static web server such as [Caddy](https://caddyserver.com/docs/quick-starts/static-files) to serve only the repository's `site/` directory, listening on localhost. Use a system service to start it after reboot. The bundled `scripts/serve.py` remains the local development preview.
+3. Configure a systemd timer to run `scripts/refresh_data.py --congress current --refresh` periodically from the repository with its virtual environment. The script also recalculates the alignment chain. Include the preceding Congress around a term change to capture its final published votes. Hosting alone does not refresh the data.
+4. For a public address without buying a domain, configure [Tailscale Funnel](https://tailscale.com/docs/features/tailscale-funnel) to forward HTTPS requests to that local web server. It provides a device address such as `https://jetson.<tailnet>.ts.net`; visitors do not need Tailscale. It avoids router port forwarding and a public home IP. Enable the required Tailscale account, DNS, certificate, and Funnel settings, and configure persistent background operation as described in the [Funnel CLI documentation](https://tailscale.com/docs/reference/tailscale-cli/funnel).
+5. Verify the site from outside the home network, test recovery after a reboot, and check the refresh logs and displayed snapshot date.
+
+Funnel is available on all Tailscale plans, but is currently beta and has non-configurable bandwidth limits. A Jetson-hosted site depends on the device, home power, and home internet connection remaining available. For a public thesis link, GitHub Pages avoids those home-server dependencies.
+
+The Jetson can alternatively run data refreshes while GitHub Pages hosts the resulting files. That hybrid setup needs a separate, authenticated deployment job; it is not required by the existing GitHub-hosted workflow.
 
 ## Other static hosts
 
