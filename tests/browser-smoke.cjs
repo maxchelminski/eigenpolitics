@@ -85,13 +85,22 @@ async function run() {
 
     await selectCongress(119);
     await page.locator("#senator-search").fill("Rubio");
+    assert.equal(await page.locator("#search-results button").count(), 0);
+    assert.match(await page.locator("#search-results").innerText(), /Rubio is excluded from this Congress/i);
+    assert.equal(await page.locator('#main-chart .point[data-id="41102"]').count(), 0);
+    await selectCongress(118);
+    await page.locator("#senator-search").fill("Rubio");
     await page.locator("#search-results button").first().click();
     assert.match(await page.locator("#senator-detail").innerText(), /Rubio/i);
+    await selectCongress(119);
+    await page.locator("#senator-search").fill("Darline");
+    await page.locator("#search-results button").first().click();
+    assert.match(await page.locator("#senator-detail").innerText(), /Darline/i);
     assert.match(await page.locator("#senator-detail").innerText(), /Low record coverage/);
     await page.locator("#senator-search").fill("no-senator-has-this-name");
     assert.match(await page.locator("#search-results").innerText(), /No matching/);
     await page.locator("#senator-search").fill("");
-    results.push("Member search, empty results, selection, low-coverage caution");
+    results.push("Rubio excluded in 119 but retained in 118; search explains exclusions and low coverage");
 
     assert.equal(await page.locator("#outlier-inspector").isVisible(), true);
     const snapshot119 = await (await page.request.get(new URL("data/congresses/119.json", base).href)).json();
@@ -99,14 +108,16 @@ async function run() {
     assert.ok(await inspectorButtons.count() > 0, "Outlier inspector has selectable members");
     const inspectorIDs = await inspectorButtons.evaluateAll(buttons => buttons.map(button => Number(button.dataset.id)));
     assert.ok(inspectorIDs.every(id => snapshot119.nodes.some(node => node.id === id)), "Inspector names refer to included senators");
-    for (const [id, name] of [[41102, /Rubio/i], [42508, /Darline/i], [42507, /Armstrong/i]]) {
+    for (const [id, name] of [[42508, /Darline/i], [42507, /Armstrong/i]]) {
       const button = page.locator(`#outlier-list .outlier-button[data-id="${id}"]`);
       assert.match(await button.innerText(), name);
       await button.click();
       assert.match(await page.locator("#senator-detail").innerText(), name);
       assert.equal(await page.locator(`#main-chart .point[data-id="${id}"]`).getAttribute("class").then(value => value.includes("selected")), true);
     }
-    assert.ok(snapshot119.nodes.every(node => !/TRUMP|VANCE/i.test(node.name)), "119th analyzed nodes exclude Trump and Vance");
+    assert.ok(snapshot119.nodes.every(node => !/TRUMP|VANCE|RUBIO/i.test(node.name)), "119th analyzed nodes exclude Trump, Vance, and Rubio");
+    assert.ok(snapshot119.provenance.excluded_members.some(node => node.id === 41102), "Rubio exclusion is recorded in provenance");
+    assert.match(await page.locator("#outlier-office-note").innerText(), /Marco Rubio is excluded/);
     results.push("Outlier names are traceable to included senators and select their plotted records");
 
     const spectralTicks = await chartTicks();

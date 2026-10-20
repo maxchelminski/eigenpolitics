@@ -32,7 +32,9 @@ This repository brings together the original thesis and analysis scripts, an int
 
 Drag the timeline beneath the chamber plot, select one of its Congress points, or use the arrow keys to move through all 119 Senates. The plot updates on input, with fixed axes across Congresses. Geometry and network views share the same limits; brokerage has its own fixed vertical scale. Independently estimated eigenvectors still do not form a shared ideological scale.
 
-The 119th Congress also has named inspection shortcuts and a [source-level outlier audit](docs/DATA_AUDIT.md). Trump and Vance are excluded. Several striking points belong to real senators with partial-term records; zero-filled time outside service can create apparent separation, so the audit distinguishes that effect from observed voting disagreement.
+The 119th Congress also has named inspection shortcuts and a [source-level outlier audit](docs/DATA_AUDIT.md). Trump and Vance are excluded by the metadata and minimum-record rules. Methodology **1.1.0** also excludes **Marco Rubio from the 119th Congress analysis**, at the author's request, because his brief service leaves only eight usable votes in the source snapshot. This is an explicit analytical choice: Rubio's Senate membership was legitimate, and his earlier Congress records remain included under the usual rules. The exclusion is scoped to Congress 119 and does not automatically apply to future Congresses. It is applied before the graph and statistics are calculated, and persists through data refreshes.
+
+Several remaining striking points belong to real senators with partial-term records; zero-filled time outside service can create apparent separation. The audit preserves the superseded 1.0.0 diagnostics, including Rubio's original point, to distinguish that effect from observed voting disagreement.
 
 <details>
 <summary>See the mobile explorer and network view</summary>

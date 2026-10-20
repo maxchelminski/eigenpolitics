@@ -23,6 +23,14 @@ EDGE_THRESHOLD = 0.5
 DISTANCE_EPSILON = 1e-6
 MIN_USABLE_VOTES = 2
 CAST_VALUES = {0: 0, 1: 1, 2: 1, 3: 1, 4: -1, 5: -1, 6: -1, 7: 0, 8: 0, 9: 0}
+# Explicit research-scope decisions are Congress-specific, separate from the
+# general metadata and minimum-vote checks. Apply these before constructing
+# the vote matrix so excluded records cannot affect correlations or metrics.
+CONGRESS_EXCLUSIONS = {
+    119: {
+        41102: "explicit Congress 119 exclusion: brief Senate service before becoming secretary of state",
+    },
+}
 # Official mapping: https://voteview.com/articles/data_help_parties
 PARTIES = {
     1: "Federalist", 13: "Democratic-Republican", 22: "Adams",
@@ -133,7 +141,7 @@ class PreparedVotes:
 
 
 def prepare_votes(votes: pd.DataFrame, members: pd.DataFrame, congress: int) -> PreparedVotes:
-    """Select state-representing senators using metadata, not hardcoded IDs."""
+    """Select senators using metadata, recorded-vote checks, and scoped exclusions."""
     congress_members = members[members["congress"] == congress]
     chamber_members = congress_members[congress_members["chamber"] == "Senate"].copy()
     # Voteview's nationally representing President/VP records have state code 99.
@@ -162,6 +170,11 @@ def prepare_votes(votes: pd.DataFrame, members: pd.DataFrame, congress: int) -> 
         {"id": int(row.icpsr), "name": row.bioname, "reason": f"non-Senate office ({row.chamber})"}
         for row in non_senate.itertuples()
     )
+    for identifier, reason in CONGRESS_EXCLUSIONS.get(congress, {}).items():
+        if identifier in chamber_members.index:
+            excluded.append({"id": identifier, "name": str(chamber_members.loc[identifier, "bioname"]),
+                             "reason": reason})
+            chamber_members = chamber_members.drop(index=identifier)
     chamber_votes = chamber_votes[chamber_votes["icpsr"].isin(chamber_members.index)]
     if chamber_votes.duplicated(["icpsr", "rollnumber"]).any():
         raise ValueError(f"Congress {congress}: duplicate member/roll-call records.")

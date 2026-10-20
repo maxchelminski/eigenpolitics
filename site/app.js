@@ -173,7 +173,7 @@ async function selectCongress(congress, updateURL = true) {
     renderOutliers();
     $("#congress-current").textContent = `${ordinal(data.congress)} Congress · ${period(data)}`;
     const included = number(data.members || data.nodes.length);
-    $("#data-notes").textContent = `${ordinal(data.congress)} Congress · ${period(data)} · ${included} analyzed members across the term, including replacements. Roll calls through ${dateLabel(data.last_vote_date)}. Excludes unusable voting records; see provenance for exact coverage.`;
+    $("#data-notes").textContent = `${ordinal(data.congress)} Congress · ${period(data)} · ${included} analyzed members across the term, including replacements. Roll calls through ${dateLabel(data.last_vote_date)}. Exclusions and exact coverage are documented in provenance.`;
     $("#plot-range").textContent = `${number(data.rollcalls)} ROLL CALLS · ${period(data)}`;
   } catch (error) {
     if (request !== state.request) return;
@@ -305,7 +305,7 @@ function renderOutliers() {
   if (inspector.hidden) return;
   // Curated inspection shortcuts for the audited 119th snapshot, not exclusions
   // or a ranking algorithm. Look up counts in the current data, never hardcode them.
-  const identifiers = [42508, 42507, 41102, 21355, 41104, 49703, 40300];
+  const identifiers = [42508, 42507, 21355, 41104, 49703, 40300];
   identifiers.forEach(id => {
     const node = data.nodes.find(item => item.id === id);
     if (!node) return;
@@ -326,6 +326,8 @@ function renderOutliers() {
   if (!data.nodes.some(node => node.id === 99912)) officeNotes.push("Donald Trump is excluded: his member metadata identifies the President, even though Voteview includes Senate-labelled positions.");
   const vance = excluded.find(node => node.id === 42304);
   if (vance) officeNotes.push(`JD Vance is excluded: ${vance.reason}.`);
+  const rubio = excluded.find(node => node.id === 41102);
+  if (rubio) officeNotes.push(`Marco Rubio is excluded from this Congress: ${rubio.reason}. Earlier Congresses retain his Senate records.`);
   $("#outlier-office-note").textContent = officeNotes.join(" ");
 }
 function renderSearch() {
@@ -334,7 +336,13 @@ function renderSearch() {
   container.replaceChildren();
   if (!state.query) return;
   const results = state.data.nodes.filter(matches);
-  if (!results.length) { container.append(html("p", "", "No matching senators. Try a surname, state, or party.")); return; }
+  if (!results.length) {
+    const exclusions = (state.data.provenance?.excluded_members || []).filter(node =>
+      `${node.name} ${prettyName(node.name)}`.toLowerCase().includes(state.query));
+    if (exclusions.length) exclusions.forEach(node => container.append(html("p", "", `${prettyName(node.name)} is excluded from this Congress: ${node.reason}.`)));
+    else container.append(html("p", "", "No matching senators. Try a surname, state, or party."));
+    return;
+  }
   results.slice(0, 12).forEach((node) => {
     const button = html("button", "", prettyName(node.name));
     button.type = "button";

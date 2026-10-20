@@ -2,7 +2,7 @@
 
 Eigen-Politics models each Senate as a network of similarities between roll-call voting records. The maintained pipeline continues the original thesis while correcting several implementation issues. Its output is descriptive network analysis, not a causal estimate of polarization or a forecast of legislation.
 
-The [thesis guide](THESIS.md) preserves the original study's metadata, reported results, and interpretive context. This document describes the maintained calculation and explains where it differs.
+The [thesis guide](THESIS.md) preserves the original study's metadata, reported results, and interpretive context. This document describes the maintained calculation, **methodology 1.1.0**, and explains where it differs.
 
 ## Data and unit of analysis
 
@@ -16,7 +16,11 @@ Membership changes mean a graph can include more than 100 senators over a two-ye
 
 ## From roll calls to a matrix
 
-The maintained pipeline retains records identified as Senate members in metadata and excludes the executive/non-state records identified by `state_icpsr = 99` or `state_abbrev = USA`. This replaces the original scripts' hand-written lists of excluded member IDs. It keeps members with at least two usable yea/nay-coded entries and nonconstant encoded records. That minimum is a computational safeguard, not evidence that a short record is statistically reliable.
+The maintained pipeline retains records identified as Senate members in metadata and excludes the executive/non-state records identified by `state_icpsr = 99` or `state_abbrev = USA`. It keeps members with at least two usable yea/nay-coded entries and nonconstant encoded records. That minimum is a computational safeguard, not evidence that a short record is statistically reliable.
+
+**Congress-specific analytical exclusion:** Starting with methodology **1.1.0**, Marco Rubio (Voteview ID `41102`) is excluded **only from Congress 119**, at the author's request. His brief Senate service before becoming secretary of state supplies only eight usable votes in the audited snapshot, making a full-Congress position unreliable under the retained zero-coding convention. This is an explicit modeling choice, not a finding that he was an invalid Senate member. The rule does not remove his earlier Congress records or apply automatically to future Congresses.
+
+The exclusion runs before construction of the analyzed matrix, similarity graph, eigenvectors, and centrality statistics. Consequently the entire 119th Congress analysis is recomputed without Rubio; the browser does not merely hide his point. The exclusion and its reason are recorded in provenance and applied again on future refreshes. Other short-service members remain subject to the existing rules, so this exception does not resolve the general missingness and tenure limitation.
 
 Each matrix row represents a retained member and each column a roll call. The inherited encoding is:
 
@@ -33,13 +37,13 @@ The meanings of the source fields and cast codes are documented by [Voteview](ht
 
 ### A concrete short-record artifact in the initial snapshot
 
-The 119th Congress snapshot generated on **October 20, 2026**, with roll calls through **September 30, 2026**, includes 103 members and 915 analyzed roll calls. Marco Rubio's source record contains only eight votes, dated January 9-20, 2025. The matrix fills his other 907 entries with zero. His eight encoded votes represent approximately **0.87% of the full-term matrix columns**, and his computed normalized betweenness is **0.501844**, the largest in this snapshot.
+The superseded **methodology 1.0.0** snapshot of the 119th Congress, generated on **October 20, 2026**, with roll calls through **September 30, 2026**, included 103 members and 915 analyzed roll calls. Marco Rubio's source record contained only eight votes, dated January 9-20, 2025. That matrix filled his other 907 entries with zero. His eight encoded votes represented approximately **0.87% of the full-term matrix columns**, and his computed normalized betweenness was **0.501844**, the largest in that snapshot. These are preserved diagnostic values, not the current 1.1.0 output, which excludes Rubio from this Congress.
 
 This is a concrete warning about the zero-coding model: a short service record can acquire an apparently central position when mostly missing observations are treated numerically as zero. The statistic is not evidence that Rubio was a uniquely influential intermediary across the observed Congress. It should not be used as a substantive ranking without a missingness and tenure sensitivity analysis.
 
-The preserved scripts explicitly remove Rubio by identifier. The maintained baseline does not repeat a person-specific exclusion: every member is subject to the same documented metadata and minimum-record rules. That choice makes the limitation inspectable; it does not resolve it. A defensible next specification should predefine a minimum record or jointly observed voting requirement and report how results change. Neither those alternatives nor an adjustment for service dates are implemented here.
+The preserved thesis scripts explicitly remove Rubio by identifier. The first maintained baseline, methodology 1.0.0, applied only the general metadata and minimum-record rules, making this limitation inspectable. Methodology 1.1.0 adds the explicit Congress-119-only exclusion described above. A broader robustness specification should predefine a minimum record or jointly observed voting requirement and report how results change. Neither those alternatives nor an adjustment for service dates are implemented here.
 
-The JSON field `participation_rate` is named for convenience but divides encoded nonzero entries by **all analyzed roll calls in the Congress**. It is record coverage, not attendance during the member's actual tenure. For replacement members and brief service, a low value must not be interpreted as habitual abstention. Details and source checksums are in [the initial 119th Congress output](../site/data/congresses/119.json); the file can change with later refreshes, whereas the example above is explicitly dated.
+The JSON field `participation_rate` is named for convenience but divides encoded nonzero entries by **all analyzed roll calls in the Congress**. It is record coverage, not attendance during the member's actual tenure. For replacement members and brief service, a low value must not be interpreted as habitual abstention. The [outlier audit](DATA_AUDIT.md) preserves the dated 1.0.0 diagnostics and source checksums. The [current 119th Congress output](../site/data/congresses/119.json) records the active methodology and can change with later refreshes.
 
 ## Similarity graph
 
@@ -72,7 +76,7 @@ Coordinates are not DW-NOMINATE scores, ideological probabilities, or comparable
 
 The timeline keeps the display limits fixed across the published Congresses. The manifest's `axis_bounds` covers all published node coordinates, adds 5% padding, and rounds limits outward to steps of 0.05. Horizontal and spectral vertical limits are symmetric; brokerage starts at zero. Partial refreshes include retained historical snapshots when calculating these bounds. A newly published snapshot can expand the limits, but moving the slider within a snapshot does not rescale them. Comparison charts use those same limits. This is a visual comparison aid, not cross-Congress alignment of the underlying eigenvectors.
 
-The [119th Congress outlier audit](DATA_AUDIT.md) verifies prominent names against their source records and official Senate biographies. It also compares correlations computed on jointly observed votes with the zero-filled baseline. Trump is correctly excluded by his member metadata even though the votes export includes Senate-labelled presidential positions; his exclusion is now recorded explicitly in provenance. The audit and the display changes do not alter model eligibility or numerical analysis.
+The [119th Congress outlier audit](DATA_AUDIT.md) verifies prominent names against their source records and official Senate biographies. It also compares correlations computed on jointly observed votes with the superseded 1.0.0 zero-filled baseline. Trump is correctly excluded by his member metadata even though the votes export includes Senate-labelled presidential positions; his exclusion is recorded explicitly in provenance. The fixed-axis display itself does not alter numerical analysis. The subsequent 1.1.0 Rubio exclusion does change the analyzed population and recalculates the 119th Congress graph.
 
 The implementation uses SciPy's symmetric normalized Laplacian. Its treatment of input self-loops is documented in [the SciPy reference](https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.csgraph.laplacian.html).
 
@@ -129,7 +133,7 @@ The gap `λ₃ − λ₂` is an eigengap relevant to spectral separation, not th
 
 | Original behavior | Maintained behavior | Consequence |
 | --- | --- | --- |
-| Selected member IDs were manually excluded; the two scripts use different exclusions. | Eligibility uses chamber/member metadata and a minimum usable record. | The analyzed population can differ. |
+| Selected member IDs were manually excluded; the two scripts use different exclusions. | Eligibility uses chamber/member metadata and a minimum usable record, with an explicit Congress-119-only exclusion for Rubio in methodology 1.1.0. | The analyzed population can differ; the scoped exception and its reason are recorded in provenance. |
 | Zero/constant records could produce undefined correlations; one script fills undefined correlations with zero before rescaling. | Unsupported constant records are filtered. | Avoids manufacturing 0.5-weight ties from undefined correlations. |
 | Self-similarity remained in the matrix. SciPy omitted it in normalization, while the custom conductance calculation included it in volumes. | The diagonal is zero everywhere. | Spectral and conductance calculations use consistent degree definitions. |
 | The sweep sorts the raw symmetric eigenvector. | It sorts the degree-adjusted coordinate. | Uses the ordering appropriate to the normalized formulation. |

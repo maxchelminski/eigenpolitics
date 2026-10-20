@@ -18,14 +18,14 @@ from eigenpolitics.analysis import (
 
 def fixture_frames():
     members = pd.DataFrame([
-        [119, "Senate", 41102, 43, "FL", 200, "RUBIO, Marco"],
+        [119, "Senate", 1, 43, "FL", 200, "EXAMPLE, Republican"],
         [119, "Senate", 2, 1, "CT", 100, "EXAMPLE, A"],
         [119, "Senate", 3, 2, "ME", 328, "EXAMPLE, B"],
         [119, "Senate", 4, 3, "MA", 100, "EXAMPLE, Inactive"],
         [119, "Senate", 42304, 99, "USA", 200, "VANCE, J. D."],
         [119, "President", 99912, 99, "USA", 200, "TRUMP, Donald"],
     ], columns=["congress", "chamber", "icpsr", "state_icpsr", "state_abbrev", "party_code", "bioname"])
-    patterns = {41102: [1, 6, 1, 6], 2: [6, 1, 6, 1], 3: [1, 1, 6, 6], 4: [1, 9, 9, 9],
+    patterns = {1: [1, 6, 1, 6], 2: [6, 1, 6, 1], 3: [1, 1, 6, 6], 4: [1, 9, 9, 9],
                 42304: [1, 1, 6, 6]}
     votes = pd.DataFrame(
         [[119, "Senate", identifier, roll + 1, code]
@@ -104,14 +104,63 @@ class ScientificTests(unittest.TestCase):
         self.assertGreaterEqual(sweep + 1e-12, min(all_scores))
         self.assertLessEqual(eigenvalues[1] / 2, min(all_scores) + 1e-12)
 
-    def test_no_member_id_is_arbitrarily_excluded(self):
+    def test_metadata_and_minimum_vote_checks_retain_eligible_senators(self):
         votes, members, _ = fixture_frames()
         prepared = prepare_votes(votes, members, 119)
-        self.assertIn(41102, prepared.matrix.index)
+        self.assertIn(1, prepared.matrix.index)
         self.assertNotIn(42304, prepared.matrix.index)
         self.assertNotIn(4, prepared.matrix.index)
         excluded_ids = {entry["id"] for entry in prepared.excluded}
         self.assertEqual(excluded_ids, {4, 42304})
+
+    def test_rubio_scope_exclusion_applies_only_to_congress_119(self):
+        votes, members, _ = fixture_frames()
+        votes.loc[votes["icpsr"] == 1, "icpsr"] = 41102
+        members.loc[members["icpsr"] == 1, ["icpsr", "bioname"]] = [41102, "RUBIO, Marco"]
+        # Keep a fourth valid senator so removing Rubio still yields a graph.
+        other_member = members[members["icpsr"] == 41102].copy()
+        other_member[["icpsr", "bioname"]] = [5, "EXAMPLE, Other"]
+        other_votes = votes[votes["icpsr"] == 41102].copy()
+        other_votes["icpsr"] = 5
+        votes = pd.concat([votes, other_votes])
+        members = pd.concat([members, other_member])
+
+        prepared = prepare_votes(votes, members, 119)
+        # Four nonconstant usable votes exceed the generic two-vote minimum:
+        # this is an explicit scope decision, not a disguised sparse-vote rule.
+        self.assertNotIn(41102, prepared.matrix.index)
+        self.assertNotIn(41102, prepared.members.index)
+        rubio_exclusions = [entry for entry in prepared.excluded if entry["id"] == 41102]
+        self.assertEqual(rubio_exclusions, [{
+            "id": 41102, "name": "RUBIO, Marco",
+            "reason": "explicit Congress 119 exclusion: brief Senate service before becoming secretary of state",
+        }])
+
+        for congress in (118, 120):
+            historical_votes, historical_members = votes.copy(), members.copy()
+            historical_votes["congress"] = historical_members["congress"] = congress
+            historical = prepare_votes(historical_votes, historical_members, congress)
+            self.assertIn(41102, historical.matrix.index)
+            self.assertNotIn(41102, {entry["id"] for entry in historical.excluded})
+
+    def test_excluded_rubio_votes_cannot_change_analysis(self):
+        votes, members, rollcalls = fixture_frames()
+        expected = analyze_congress(votes, members, rollcalls, 119, {})
+        rubio_member = members[members["icpsr"] == 1].copy()
+        rubio_member[["icpsr", "bioname"]] = [41102, "RUBIO, Marco"]
+        rubio_votes = votes[votes["icpsr"] == 1].copy()
+        rubio_votes["icpsr"] = 41102
+        rubio_votes["cast_code"] = [1, 6, 6, 1]
+        actual = analyze_congress(
+            pd.concat([votes, rubio_votes]), pd.concat([members, rubio_member]),
+            rollcalls, 119, {},
+        )
+        self.assertIn(41102, {entry["id"] for entry in actual["provenance"]["excluded_members"]})
+        # Equality of all published analytical fields verifies that this is a
+        # reanalysis without the member, rather than hiding a plotted node.
+        actual.pop("provenance")
+        expected.pop("provenance")
+        self.assertEqual(actual, expected)
 
     def test_presidential_positions_and_sparse_senator_exclusions_are_explained(self):
         votes, members, rollcalls = fixture_frames()
@@ -119,7 +168,7 @@ class ScientificTests(unittest.TestCase):
         # cannot support a correlation. Presidential positions are not senators.
         members.loc[members["icpsr"] == 42304, ["state_icpsr", "state_abbrev"]] = [35, "OH"]
         votes.loc[votes["icpsr"] == 42304, "cast_code"] = [1, 9, 9, 9]
-        presidential_votes = votes[votes["icpsr"] == 41102].copy()
+        presidential_votes = votes[votes["icpsr"] == 1].copy()
         presidential_votes["icpsr"] = 99912
         votes = pd.concat([votes, presidential_votes])
         result = analyze_congress(votes, members, rollcalls, 119, {})
@@ -127,16 +176,16 @@ class ScientificTests(unittest.TestCase):
         self.assertEqual(exclusions[99912],
                          {"id": 99912, "name": "TRUMP, Donald", "reason": "non-Senate office (President)"})
         self.assertEqual(exclusions[42304]["reason"], "fewer than 2 usable votes")
-        self.assertEqual({node["id"] for node in result["nodes"]}, {41102, 2, 3})
+        self.assertEqual({node["id"] for node in result["nodes"]}, {1, 2, 3})
 
     def test_non_senate_metadata_does_not_override_eligible_senate_record(self):
         votes, members, _ = fixture_frames()
-        second_office = members[members["icpsr"] == 41102].copy()
+        second_office = members[members["icpsr"] == 1].copy()
         second_office[["chamber", "state_icpsr", "state_abbrev"]] = ["President", 99, "USA"]
         members = pd.concat([members, second_office])
         prepared = prepare_votes(votes, members, 119)
-        self.assertIn(41102, prepared.matrix.index)
-        self.assertNotIn(41102, {entry["id"] for entry in prepared.excluded})
+        self.assertIn(1, prepared.matrix.index)
+        self.assertNotIn(1, {entry["id"] for entry in prepared.excluded})
 
     def test_duplicate_votes_fail_validation(self):
         votes, members, _ = fixture_frames()
