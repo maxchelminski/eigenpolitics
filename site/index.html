@@ -34,7 +34,7 @@
       <section id="explorer" class="explorer" aria-labelledby="explorer-title">
         <div class="section-top">
           <div class="section-title"><span class="section-number">01</span><h2 id="explorer-title">Inside the chamber</h2></div>
-          <div class="congress-control"><label for="congress-select">CONGRESS</label><select id="congress-select" disabled><option>Loading…</option></select><button id="compare-button" class="text-button" type="button" aria-pressed="false">Compare with 1979–81 <span aria-hidden="true">↗</span></button></div>
+          <div class="congress-control"><span id="congress-current" class="congress-current">Loading Congress…</span><button id="compare-button" class="text-button" type="button" aria-pressed="false">Compare with 1979–81 <span aria-hidden="true">↗</span></button></div>
         </div>
         <div class="stats-grid" id="stats" aria-live="polite"></div>
         <div class="chart-layout">
@@ -44,7 +44,7 @@
             <div class="network-controls" id="network-controls" hidden><label for="edge-threshold">Show ties with weight ≥ <output id="threshold-value">0.80</output></label><input type="range" id="edge-threshold" min="0.5" max="0.99" step="0.01" value="0.80"><span id="edge-count"></span></div>
             <div id="main-chart" class="main-chart" aria-live="polite"></div>
             <div id="search-results" class="search-results" hidden></div>
-            <div class="plot-footer"><span><span class="tiny-circle"></span> Select a senator to inspect their position</span><span id="plot-range"></span></div>
+            <div class="plot-footer"><span><span class="tiny-circle"></span> Fixed axes across Congresses · Select a senator</span><span id="plot-range"></span></div>
           </div>
           <aside class="insight-panel" aria-labelledby="insight-title">
             <p class="eyebrow">READING THE NETWORK</p>
@@ -54,8 +54,27 @@
             <div class="interpretation"><span class="note-mark">↳</span><p id="interpretation-text">The axes come from the graph’s normalized Laplacian. They are structural coordinates, not calibrated ideology scores.</p></div>
           </aside>
         </div>
+        <div class="timeline-panel" aria-label="Congress timeline">
+          <div class="timeline-heading">
+            <div><label class="eyebrow" for="congress-slider">MOVE THROUGH THE SENATE</label><output id="congress-readout" for="congress-slider">Loading…</output></div>
+            <div class="timeline-navigation"><span id="timeline-status" role="status"></span><button id="congress-prev" type="button" aria-label="Previous Congress" disabled>←</button><button id="congress-next" type="button" aria-label="Next Congress" disabled>→</button></div>
+          </div>
+          <input id="congress-slider" type="range" min="0" max="118" step="1" value="118" aria-describedby="timeline-help" disabled>
+          <div id="congress-dots" class="timeline-dots" role="group" aria-label="Select a Congress"></div>
+          <div id="congress-years" class="timeline-years" aria-hidden="true"></div>
+          <p id="timeline-help" class="timeline-help">Drag to update, select a point, or use the arrow keys. Axes stay fixed; eigenvectors are estimated separately for each Congress.</p>
+        </div>
         <div id="comparison-panel" class="comparison-panel" hidden></div>
         <p id="data-notes" class="data-notes"></p>
+        <details id="outlier-inspector" class="outlier-inspector" open hidden>
+          <summary>Who are the 119th Congress outliers?</summary>
+          <div class="outlier-body">
+            <p>Some separated points have short service records; this model fills votes outside their service with zeros. Select a name to locate the point and inspect its coverage.</p>
+            <div id="outlier-list" class="outlier-list"></div>
+            <p id="outlier-office-note"></p>
+            <p class="outlier-caution">These are points to inspect, not an ideological ranking. The two highest points, <a href="https://www.dgraham.senate.gov/" target="_blank" rel="noopener">Darline Graham</a> and <a href="https://www.armstrong.senate.gov/about/" target="_blank" rel="noopener">Alan Armstrong</a>, are verified senators who joined during 2026. Partial service and voting disagreement have different interpretations.</p>
+          </div>
+        </details>
       </section>
       <section id="history" class="history-section" aria-labelledby="history-title">
         <div class="section-top"><div class="section-title"><span class="section-number">02</span><h2 id="history-title">A longer view</h2></div><label class="metric-control" for="history-metric">MEASURE<select id="history-metric"><option value="fiedler_value">Spectral connectivity · λ₂</option><option value="sweep_conductance">Sweep conductance</option><option value="mean_betweenness">Mean brokerage</option><option value="gini_betweenness">Brokerage inequality · Gini</option></select></label></div>

@@ -113,6 +113,31 @@ class ScientificTests(unittest.TestCase):
         excluded_ids = {entry["id"] for entry in prepared.excluded}
         self.assertEqual(excluded_ids, {4, 42304})
 
+    def test_presidential_positions_and_sparse_senator_exclusions_are_explained(self):
+        votes, members, rollcalls = fixture_frames()
+        # A departing senator's state metadata is valid, but one usable vote
+        # cannot support a correlation. Presidential positions are not senators.
+        members.loc[members["icpsr"] == 42304, ["state_icpsr", "state_abbrev"]] = [35, "OH"]
+        votes.loc[votes["icpsr"] == 42304, "cast_code"] = [1, 9, 9, 9]
+        presidential_votes = votes[votes["icpsr"] == 41102].copy()
+        presidential_votes["icpsr"] = 99912
+        votes = pd.concat([votes, presidential_votes])
+        result = analyze_congress(votes, members, rollcalls, 119, {})
+        exclusions = {entry["id"]: entry for entry in result["provenance"]["excluded_members"]}
+        self.assertEqual(exclusions[99912],
+                         {"id": 99912, "name": "TRUMP, Donald", "reason": "non-Senate office (President)"})
+        self.assertEqual(exclusions[42304]["reason"], "fewer than 2 usable votes")
+        self.assertEqual({node["id"] for node in result["nodes"]}, {41102, 2, 3})
+
+    def test_non_senate_metadata_does_not_override_eligible_senate_record(self):
+        votes, members, _ = fixture_frames()
+        second_office = members[members["icpsr"] == 41102].copy()
+        second_office[["chamber", "state_icpsr", "state_abbrev"]] = ["President", 99, "USA"]
+        members = pd.concat([members, second_office])
+        prepared = prepare_votes(votes, members, 119)
+        self.assertIn(41102, prepared.matrix.index)
+        self.assertNotIn(41102, {entry["id"] for entry in prepared.excluded})
+
     def test_duplicate_votes_fail_validation(self):
         votes, members, _ = fixture_frames()
         with self.assertRaisesRegex(ValueError, "duplicate"):

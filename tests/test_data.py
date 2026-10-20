@@ -23,7 +23,8 @@ def summary(number=119):
     return {"congress": number, "start_year": 1789 + (number-1)*2, "end_year": 1791 + (number-1)*2,
             "members": 3, "rollcalls": 4, "last_vote_date": "2026-09-30", "fiedler_value": .4,
             "sweep_conductance": .3, "mean_betweenness": .1, "max_betweenness": .2,
-            "gini_betweenness": .5, "data_file": f"congresses/{number}.json"}
+            "gini_betweenness": .5, "data_file": f"congresses/{number}.json",
+            "nodes": [{"x": -.1, "y": .2, "betweenness": .2}]}
 
 
 class DataIntegrityTests(unittest.TestCase):
@@ -74,6 +75,40 @@ class DataIntegrityTests(unittest.TestCase):
             index = json.loads((output / "index.json").read_text())
             self.assertEqual([row["congress"] for row in index["congresses"]], [118, 119])
             self.assertTrue((output / "congresses/118.json").exists())
+
+    def test_subset_refresh_keeps_fixed_axes_covering_historical_nodes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            historical = {**summary(1), "nodes": [{"x": -.68, "y": .83, "betweenness": .7}]}
+            initial = publish([historical, summary()], output)
+            refreshed = publish([summary()], output)
+            bounds = refreshed["axis_bounds"]
+            self.assertEqual(bounds, initial["axis_bounds"])
+            self.assertEqual(bounds, {"x": [-.75, .75], "y": [-.9, .9], "betweenness": [0, .75]})
+            for node in historical["nodes"]:
+                for axis, value in node.items():
+                    self.assertLess(bounds[axis][0], value)
+                    self.assertGreater(bounds[axis][1], value)
+
+    def test_refreshed_nodes_expand_fixed_axes_before_publication(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            publish([summary()], output)
+            updated = {**summary(), "nodes": [{"x": .51, "y": -.64, "betweenness": .81}]}
+            index = publish([updated], output)
+            self.assertEqual(index["axis_bounds"],
+                             {"x": [-.55, .55], "y": [-.7, .7], "betweenness": [0, .9]})
+
+    def test_missing_historical_details_prevent_partial_publication(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            publish([summary(118)], output)
+            before = (output / "index.json").read_bytes()
+            (output / "congresses/118.json").unlink()
+            with self.assertRaises(FileNotFoundError):
+                publish([summary(119)], output)
+            self.assertEqual((output / "index.json").read_bytes(), before)
+            self.assertFalse((output / "congresses/119.json").exists())
 
     def test_nonfinite_result_preserves_previous_files(self):
         with tempfile.TemporaryDirectory() as directory:

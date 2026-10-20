@@ -135,7 +135,9 @@ npm run test:browser
 npm run screenshots
 ```
 
-These checks exercise Congress selection, member search, all chart modes, threshold changes, comparison, historical selection, downloads, a missing-data error, and narrow layouts. The screenshots command replaces the desktop, mobile, and network screenshots under `docs/images/` with real captures of the current snapshot.
+These checks exercise live timeline input, clickable Congress points, keyboard navigation, fixed axes across all views, rapid-selection races, failure rollback, named outlier inspection, search, comparison, downloads, and narrow layouts. The screenshots command replaces the desktop, mobile, and network screenshots under `docs/images/` with real captures of the current snapshot.
+
+The slider indexes the available manifest entries, so gaps in historical data do not create invalid selections. Requests carry a selection counter: only the latest selection can replace the chart, and a failed latest request restores the last displayed Congress. In-flight loads are shared and scoped to the manifest generation. `axis_bounds` is calculated during publication from all retained snapshots, so the browser does not download every Congress merely to establish a fixed plotting frame.
 
 To use an installed Edge browser on Windows instead of downloading Chromium:
 

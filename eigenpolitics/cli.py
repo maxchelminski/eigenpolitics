@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
+import math
 from pathlib import Path
 import sys
 
@@ -28,6 +30,22 @@ def build_congress(congress: int, cache: Path, refresh: bool, offline: bool) -> 
                             {"sources": sources, "generated_at": utc_now()})
 
 
+def axis_bounds(congresses: Iterable[dict]) -> dict[str, list[float]]:
+    """Use the same padded display limits for every published Congress."""
+    maxima = {"x": 0.0, "y": 0.0, "betweenness": 0.0}
+    for congress in congresses:
+        for node in congress["nodes"]:
+            for axis in maxima:
+                value = float(node[axis])
+                if not math.isfinite(value):
+                    raise ValueError(f"Nonfinite {axis} coordinate in Congress {congress['congress']}.")
+                maxima[axis] = max(maxima[axis], abs(value))
+    limits = {axis: round(math.ceil(max(value * 1.05, 0.05) / 0.05) * 0.05, 6)
+              for axis, value in maxima.items()}
+    return {axis: [0.0 if axis == "betweenness" else -limit, limit]
+            for axis, limit in limits.items()}
+
+
 def publish(results: list[dict], output: Path) -> dict:
     """Merge successful analyses after the entire requested build has passed.
 
@@ -47,10 +65,20 @@ def publish(results: list[dict], output: Path) -> dict:
     serialized = [(output / result["data_file"], json_bytes(result)) for result in results]
     for result in results:
         existing[result["congress"]] = {key: result[key] for key in SUMMARY_KEYS}
+    updated = {result["congress"]: result for result in results}
+
+    def published_congresses() -> Iterable[dict]:
+        for number, summary in existing.items():
+            if number in updated:
+                yield updated[number]
+            else:
+                yield json.loads((output / summary["data_file"]).read_text(encoding="utf-8"))
+
     index = {
         "schema_version": 1, "generated_at": utc_now(),
         "source": {"name": "Voteview Congressional Roll-Call Votes Database", "url": "https://voteview.com/data"},
         "methodology_version": METHODOLOGY_VERSION,
+        "axis_bounds": axis_bounds(published_congresses()),
         "congresses": [existing[number] for number in sorted(existing)],
     }
     encoded_index = json_bytes(index)

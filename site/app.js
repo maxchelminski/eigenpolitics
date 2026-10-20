@@ -3,7 +3,7 @@
 const $ = (selector) => document.querySelector(selector);
 const SVG_NS = "http://www.w3.org/2000/svg";
 const palette = { 100: "#528bb0", 200: "#cb785b", 328: "#9a9468", 1: "#9c8259", 9: "#70966c", 13: "#70966c", 22: "#b2934f", 29: "#c5a54f", 37: "#9786ad", 46: "#4e9691", 112: "#778aaf", 370: "#979659", 380: "#b6819d" };
-const state = { index: null, data: null, view: "spectral", selected: null, query: "", threshold: 0.8, request: 0, compare: false, baseline: null, cache: new Map() };
+const state = { index: null, data: null, view: "spectral", selected: null, query: "", threshold: 0.8, request: 0, target: null, compare: false, cache: new Map(), pending: new Map(), generation: 0, axes: null };
 const metricInfo = {
   fiedler_value: ["How connected is the chamber?", "Lower λ₂ indicates weaker connectivity in this weighted voting graph.", "Normalized Laplacian · λ₂"],
   sweep_conductance: ["Where does the network separate?", "Lower sweep conductance means a smaller cut relative to the smaller group’s volume.", "Fiedler sweep conductance"],
@@ -58,23 +58,85 @@ function safeDataPath(value) {
   return `data/${value}`;
 }
 async function loadCongress(summary) {
-  const key = summary.congress;
-  if (!state.cache.has(key)) {
-    const data = await readJSON(safeDataPath(summary.data_file));
-    if (!Array.isArray(data.nodes) || !data.nodes.length) throw new Error("The Congress data contains no analyzed members.");
-    state.cache.set(key, { ...summary, ...data });
+  const generation = state.generation, key = `${generation}:${summary.congress}`;
+  if (state.cache.has(key)) return state.cache.get(key);
+  if (!state.pending.has(key)) {
+    const pending = readJSON(safeDataPath(summary.data_file)).then(data => {
+      if (!Array.isArray(data.nodes) || !data.nodes.length) throw new Error("The Congress data contains no analyzed members.");
+      const result = { ...summary, ...data };
+      if (generation === state.generation) state.cache.set(key, result);
+      return result;
+    }).finally(() => state.pending.delete(key));
+    state.pending.set(key, pending);
   }
-  return state.cache.get(key);
+  return state.pending.get(key);
 }
-function fillSelect() {
-  const select = $("#congress-select");
-  select.replaceChildren();
-  [...state.index.congresses].reverse().forEach((d) => {
-    const option = html("option", "", `${ordinal(d.congress)} · ${period(d)}`);
-    option.value = d.congress;
-    select.append(option);
+function setFixedAxes(index) {
+  const source = index.axis_bounds;
+  const valid = (a) => Array.isArray(a) && a.length === 2 && a.every(Number.isFinite) && a[0] < a[1];
+  // Unit-normalized eigenvector coordinates and normalized betweenness are
+  // bounded by one. The fallback keeps old snapshots usable without rescaling.
+  state.axes = {
+    x: valid(source?.x) ? [...source.x] : [-1, 1],
+    y: valid(source?.y) ? [...source.y] : [-1, 1],
+    betweenness: valid(source?.betweenness) ? [...source.betweenness] : [0, 1],
+  };
+}
+function fillTimeline() {
+  const entries = state.index.congresses, slider = $("#congress-slider");
+  slider.max = entries.length - 1;
+  slider.disabled = false;
+  $("#congress-dots").style.setProperty("--congress-count", entries.length);
+  $("#congress-dots").replaceChildren(...entries.map((d, index) => {
+    const dot = html("button", "timeline-dot");
+    dot.type = "button";
+    dot.dataset.congress = d.congress;
+    dot.dataset.index = index;
+    dot.title = `${ordinal(d.congress)} · ${period(d)}`;
+    dot.setAttribute("aria-label", `${ordinal(d.congress)} Congress, ${period(d)}`);
+    dot.tabIndex = -1;
+    dot.addEventListener("click", () => selectCongress(d.congress));
+    dot.addEventListener("keydown", event => {
+      const changes = { ArrowLeft: -1, ArrowRight: 1, Home: -entries.length, End: entries.length };
+      if (!(event.key in changes)) return;
+      event.preventDefault();
+      const position = Math.max(0, Math.min(entries.length - 1, index + changes[event.key]));
+      selectCongress(entries[position].congress);
+      $("#congress-dots").children[position].focus();
+    });
+    return dot;
+  }));
+  const labels = entries.length > 1 ? [0, Math.round((entries.length - 1) / 3), Math.round(2 * (entries.length - 1) / 3), entries.length - 1] : [0];
+  $("#congress-years").replaceChildren(...[...new Set(labels)].map((position, index) => {
+    const label = html("span", "", `${ordinal(entries[position].congress)} · ${entries[position].start_year}`);
+    label.style.left = `${position / Math.max(1, entries.length - 1) * 100}%`;
+    if (index === 0) label.classList.add("first");
+    if (position === entries.length - 1) label.classList.add("last");
+    return label;
+  }));
+}
+function syncTimeline(summary) {
+  const entries = state.index.congresses;
+  const index = entries.findIndex(d => d.congress === summary.congress);
+  state.target = summary.congress;
+  $("#congress-slider").value = index;
+  $("#congress-slider").style.setProperty("--progress", `${index / Math.max(1, entries.length - 1) * 100}%`);
+  $("#congress-slider").setAttribute("aria-valuetext", `${ordinal(summary.congress)} Congress, ${summary.start_year} to ${summary.end_year}`);
+  $("#congress-readout").textContent = `${ordinal(summary.congress)} Senate · ${period(summary)}`;
+  $("#congress-prev").disabled = index <= 0;
+  $("#congress-next").disabled = index >= entries.length - 1;
+  $("#congress-dots").querySelectorAll(".timeline-dot").forEach(dot => {
+    const active = Number(dot.dataset.congress) === summary.congress;
+    dot.setAttribute("aria-current", String(active));
+    dot.tabIndex = active ? 0 : -1;
   });
-  select.disabled = false;
+}
+function stepCongress(direction) {
+  if (!state.index) return;
+  const entries = state.index.congresses;
+  const position = entries.findIndex(d => d.congress === state.target);
+  const next = Math.max(0, Math.min(entries.length - 1, position + direction));
+  selectCongress(entries[next].congress);
 }
 function renderSnapshot() {
   const latest = state.index.congresses.at(-1);
@@ -82,11 +144,12 @@ function renderSnapshot() {
   $("#history-range").textContent = `${state.index.congresses[0].start_year} — ${latest.end_year} / ${state.index.congresses.length} CONGRESSES`;
 }
 async function selectCongress(congress, updateURL = true) {
-  const request = ++state.request;
   const summary = state.index.congresses.find((d) => Number(d.congress) === Number(congress));
   if (!summary) return;
+  const request = ++state.request;
   $("#workspace").setAttribute("aria-busy", "true");
-  $("#congress-select").value = summary.congress;
+  syncTimeline(summary);
+  $("#timeline-status").textContent = `Loading ${ordinal(summary.congress)}…`;
   try {
     const data = await loadCongress(summary);
     if (request !== state.request) return;
@@ -107,6 +170,8 @@ async function selectCongress(congress, updateURL = true) {
     renderHistory();
     renderProvenance();
     renderComparison();
+    renderOutliers();
+    $("#congress-current").textContent = `${ordinal(data.congress)} Congress · ${period(data)}`;
     const included = number(data.members || data.nodes.length);
     $("#data-notes").textContent = `${ordinal(data.congress)} Congress · ${period(data)} · ${included} analyzed members across the term, including replacements. Roll calls through ${dateLabel(data.last_vote_date)}. Excludes unusable voting records; see provenance for exact coverage.`;
     $("#plot-range").textContent = `${number(data.rollcalls)} ROLL CALLS · ${period(data)}`;
@@ -114,9 +179,12 @@ async function selectCongress(congress, updateURL = true) {
     if (request !== state.request) return;
     $("#load-error").textContent = `${error.message} Run the data refresh command in the README and reload. The last successfully loaded chart, if any, remains below.`;
     $("#load-error").hidden = false;
-    if (state.data) $("#congress-select").value = state.data.congress;
+    if (state.data) syncTimeline(state.data);
   } finally {
-    if (request === state.request) $("#workspace").setAttribute("aria-busy", "false");
+    if (request === state.request) {
+      $("#workspace").setAttribute("aria-busy", "false");
+      $("#timeline-status").textContent = "";
+    }
   }
 }
 function renderStats() {
@@ -149,15 +217,6 @@ function renderLegend() {
     return item;
   }));
 }
-function bounds(values, includeZero = true) {
-  const finite = values.filter(Number.isFinite);
-  let min = Math.min(...finite), max = Math.max(...finite);
-  if (includeZero) { min = Math.min(min, 0); max = Math.max(max, 0); }
-  if (!Number.isFinite(min) || !Number.isFinite(max)) return [-1, 1];
-  if (Math.abs(max - min) < 1e-10) return min === 0 ? [-0.01, 0.01] : [min - 0.1, max + 0.1];
-  const pad = (max - min) * 0.14;
-  return [min - pad, max + pad];
-}
 function coordinates(data, view) {
   return data.nodes.map((node) => ({ node, x: Number(node.x), y: view === "brokerage" ? Number(node.betweenness) : Number(node.y) }));
 }
@@ -169,10 +228,10 @@ function buildScatter(data, { compact = false, view = state.view, sharedBounds =
   const width = compact ? 560 : (mobile ? 400 : 860), height = compact ? 280 : (mobile ? 315 : 355);
   const margin = { left: compact ? 50 : 58, right: 24, top: 25, bottom: 51 };
   const points = coordinates(data, view);
-  const [xb, yb] = sharedBounds || [bounds(points.map((p) => p.x)), bounds(points.map((p) => p.y))];
+  const [xb, yb] = sharedBounds || [state.axes.x, view === "brokerage" ? state.axes.betweenness : state.axes.y];
   const sx = (v) => margin.left + (v - xb[0]) / (xb[1] - xb[0]) * (width - margin.left - margin.right);
   const sy = (v) => height - margin.bottom - (v - yb[0]) / (yb[1] - yb[0]) * (height - margin.top - margin.bottom);
-  const svg = el("svg", { viewBox: `0 0 ${width} ${height}`, role: "group", "aria-label": `${ordinal(data.congress)} Senate ${view} chart. Use Tab to explore senators.` });
+  const svg = el("svg", { viewBox: `0 0 ${width} ${height}`, role: "group", "aria-label": `${ordinal(data.congress)} Senate ${view} chart. Use Tab to explore senators.`, "data-x-min": xb[0], "data-x-max": xb[1], "data-y-min": yb[0], "data-y-max": yb[1] });
   svg.append(el("title", {}, `${ordinal(data.congress)} Senate: ${view === "brokerage" ? "betweenness versus Fiedler coordinate" : "two-dimensional spectral embedding"}`));
   for (let i = 0; i <= 4; i++) {
     const x = xb[0] + i * (xb[1] - xb[0]) / 4, y = yb[0] + i * (yb[1] - yb[0]) / 4;
@@ -212,11 +271,21 @@ function buildScatter(data, { compact = false, view = state.view, sharedBounds =
 }
 function highlightPoints() {
   $("#main-chart").querySelectorAll(".point").forEach((point) => point.classList.toggle("selected", point.dataset.id === String(state.selected)));
+  const svg = $("#main-chart svg"), selected = $("#main-chart .point.selected");
+  svg?.querySelector(".point-label")?.remove();
+  if (selected) {
+    const node = state.data.nodes.find(item => String(item.id) === String(state.selected));
+    const x = Number(selected.getAttribute("cx")), y = Number(selected.getAttribute("cy"));
+    const label = el("text", { x: x + 9, y: y - 11, class: "point-label", "pointer-events": "none" }, prettyName(node.name));
+    if (x > svg.viewBox.baseVal.width * .62) { label.setAttribute("x", x - 9); label.setAttribute("text-anchor", "end"); }
+    svg.append(label);
+  }
+  $("#outlier-list").querySelectorAll(".outlier-button").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.id === String(state.selected))));
 }
 function renderChart() {
   if (!state.data) return;
   const config = {
-    spectral: ["SPECTRAL EMBEDDING", "Two dimensions of division", "Each point is a senator. Nearby positions reflect similar patterns in the weighted voting network. Party colors are added after the analysis.", "The axes come from the graph’s normalized Laplacian. They are structural coordinates, not calibrated ideology scores."],
+    spectral: ["SPECTRAL EMBEDDING", "Two dimensions of division", "Each point is a senator. Nearby positions reflect similar patterns in the weighted voting network. Party colors are added after the analysis.", "Axes stay fixed across Congresses. Eigenvectors are normalized separately, so this compares shapes without establishing a common ideological scale."],
     network: ["WEIGHTED VOTING NETWORK", "The ties between votes", "Lines connect senators whose transformed voting correlation meets the display threshold. Positions use the same spectral embedding as the geometry view.", "This slider changes the visible ties only. Spectral metrics use the full weighted graph; brokerage uses a separate 0.5 edge threshold."],
     brokerage: ["STRUCTURAL BROKERAGE", "Who lies on the paths?", "Height shows weighted shortest-path betweenness on a graph retaining ties of at least 0.5. Higher values identify more frequent intermediaries in this model.", "Short service can produce misleadingly high brokerage: missing and nonservice votes are coded zero. Check each member’s record coverage before interpreting a high score."],
   }[state.view];
@@ -227,6 +296,37 @@ function renderChart() {
   $("#network-controls").hidden = state.view !== "network";
   $("#main-chart").replaceChildren(buildScatter(state.data));
   renderSearch();
+  highlightPoints();
+}
+function renderOutliers() {
+  const data = state.data, inspector = $("#outlier-inspector");
+  inspector.hidden = data.congress !== 119;
+  $("#outlier-list").replaceChildren();
+  if (inspector.hidden) return;
+  // Curated inspection shortcuts for the audited 119th snapshot, not exclusions
+  // or a ranking algorithm. Look up counts in the current data, never hardcode them.
+  const identifiers = [42508, 42507, 41102, 21355, 41104, 49703, 40300];
+  identifiers.forEach(id => {
+    const node = data.nodes.find(item => item.id === id);
+    if (!node) return;
+    const button = html("button", "outlier-button");
+    button.type = "button"; button.dataset.id = id;
+    button.setAttribute("aria-pressed", "false");
+    button.append(html("strong", "", prettyName(node.name)), html("span", "", `${node.state} · ${number(node.votes_cast)} / ${number(data.rollcalls)} encoded votes`));
+    button.addEventListener("click", () => {
+      state.selected = id;
+      state.query = "";
+      $("#senator-search").value = "";
+      renderDetail(); renderChart();
+    });
+    $("#outlier-list").append(button);
+  });
+  const excluded = data.provenance?.excluded_members || [];
+  const officeNotes = [];
+  if (!data.nodes.some(node => node.id === 99912)) officeNotes.push("Donald Trump is excluded: his member metadata identifies the President, even though Voteview includes Senate-labelled positions.");
+  const vance = excluded.find(node => node.id === 42304);
+  if (vance) officeNotes.push(`JD Vance is excluded: ${vance.reason}.`);
+  $("#outlier-office-note").textContent = officeNotes.join(" ");
 }
 function renderSearch() {
   const container = $("#search-results");
@@ -319,8 +419,7 @@ async function renderComparison() {
   try {
     const prior = await loadCongress(baseline);
     if (!state.compare || state.data !== current) return;
-    const p = [...coordinates(prior, "spectral"), ...coordinates(current, "spectral")];
-    const sharedBounds = [bounds(p.map((d) => d.x)), bounds(p.map((d) => d.y))];
+    const sharedBounds = [state.axes.x, state.axes.y];
     panel.replaceChildren(html("h3", "", "Two chambers, one visual frame"), html("p", "", "Shared axis limits make the shapes easier to compare. Eigenvectors are normalized independently; they do not form a common ideological scale."));
     const grid = html("div", "comparison-grid");
     [prior, current].forEach((data) => {
@@ -331,6 +430,7 @@ async function renderComparison() {
     });
     panel.append(grid);
   } catch (error) {
+    if (!state.compare || state.data !== current) return;
     panel.replaceChildren(html("p", "", `Comparison unavailable: ${error.message}`));
   }
 }
@@ -363,7 +463,8 @@ async function init() {
     if (index.schema_version !== 1 || !Array.isArray(index.congresses) || !index.congresses.length) throw new Error("The data manifest is missing or incompatible.");
     index.congresses.sort((a, b) => a.congress - b.congress);
     state.index = index;
-    fillSelect();
+    setFixedAxes(index);
+    fillTimeline();
     renderSnapshot();
     const requested = Number(new URLSearchParams(location.search).get("congress"));
     const initial = index.congresses.some((d) => d.congress === requested) ? requested : index.congresses.at(-1).congress;
@@ -376,7 +477,12 @@ async function init() {
     $("#workspace").setAttribute("aria-busy", "false");
   }
 }
-$("#congress-select").addEventListener("change", (event) => selectCongress(Number(event.target.value)));
+$("#congress-slider").addEventListener("input", event => {
+  const summary = state.index?.congresses[Number(event.target.value)];
+  if (summary) selectCongress(summary.congress);
+});
+$("#congress-prev").addEventListener("click", () => stepCongress(-1));
+$("#congress-next").addEventListener("click", () => stepCongress(1));
 document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => {
   state.view = button.dataset.view;
   document.querySelectorAll("[data-view]").forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
@@ -396,10 +502,10 @@ setInterval(async () => {
   try {
     const next = await readJSON("data/index.json");
     if (next.schema_version !== 1 || !Array.isArray(next.congresses) || !next.congresses.length || next.generated_at === state.index.generated_at) return;
-    const selected = state.data?.congress;
+    const selected = state.target || state.data?.congress;
     next.congresses.sort((a, b) => a.congress - b.congress);
-    state.index = next; state.cache.clear();
-    fillSelect(); renderSnapshot();
+    state.index = next; state.generation++; state.cache.clear();
+    setFixedAxes(next); fillTimeline(); renderSnapshot();
     await selectCongress(next.congresses.some((d) => d.congress === selected) ? selected : next.congresses.at(-1).congress, false);
     toast("A refreshed research snapshot is now available.");
   } catch { /* Retain the last successful snapshot on temporary server errors. */ }

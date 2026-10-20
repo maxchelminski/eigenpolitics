@@ -70,6 +70,10 @@ The first and second displayed spectral coordinates are the eigenvectors corresp
 
 Coordinates are not DW-NOMINATE scores, ideological probabilities, or comparable absolute units across Congresses. Close eigenvalues can make individual eigenvectors unstable under small data changes, and an entire eigenspace may rotate. A plot's axes therefore need to be interpreted within the selected Congress. Normalization controls one source of graph-size dependence; it does not make different agendas, memberships, and voting opportunities equivalent.
 
+The timeline keeps the display limits fixed across the published Congresses. The manifest's `axis_bounds` covers all published node coordinates, adds 5% padding, and rounds limits outward to steps of 0.05. Horizontal and spectral vertical limits are symmetric; brokerage starts at zero. Partial refreshes include retained historical snapshots when calculating these bounds. A newly published snapshot can expand the limits, but moving the slider within a snapshot does not rescale them. Comparison charts use those same limits. This is a visual comparison aid, not cross-Congress alignment of the underlying eigenvectors.
+
+The [119th Congress outlier audit](DATA_AUDIT.md) verifies prominent names against their source records and official Senate biographies. It also compares correlations computed on jointly observed votes with the zero-filled baseline. Trump is correctly excluded by his member metadata even though the votes export includes Senate-labelled presidential positions; his exclusion is now recorded explicitly in provenance. The audit and the display changes do not alter model eligibility or numerical analysis.
+
 The implementation uses SciPy's symmetric normalized Laplacian. Its treatment of input self-loops is documented in [the SciPy reference](https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.csgraph.laplacian.html).
 
 ## Conductance and the spectral sweep

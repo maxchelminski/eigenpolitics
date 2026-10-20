@@ -30,6 +30,10 @@ This repository brings together the original thesis and analysis scripts, an int
 | Member inspection | Where does a particular senator sit in that Congress's structure? |
 | Source and method notes | What was downloaded, when was it retrieved, and how were the results computed? |
 
+Drag the timeline beneath the chamber plot, select one of its Congress points, or use the arrow keys to move through all 119 Senates. The plot updates on input, with fixed axes across Congresses. Geometry and network views share the same limits; brokerage has its own fixed vertical scale. Independently estimated eigenvectors still do not form a shared ideological scale.
+
+The 119th Congress also has named inspection shortcuts and a [source-level outlier audit](docs/DATA_AUDIT.md). Trump and Vance are excluded. Several striking points belong to real senators with partial-term records; zero-filled time outside service can create apparent separation, so the audit distinguishes that effect from observed voting disagreement.
+
 <details>
 <summary>See the mobile explorer and network view</summary>
 
@@ -161,6 +165,7 @@ eigenpolitics/
 ├── docs/
 │   ├── METHODOLOGY.md
 │   ├── THESIS.md
+│   ├── DATA_AUDIT.md              Named outliers, membership checks, and diagnostics
 │   ├── DEVELOPMENT.md
 │   ├── DEPLOYMENT.md
 │   └── images/                   Application screenshots and figures

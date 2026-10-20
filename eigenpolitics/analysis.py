@@ -134,7 +134,8 @@ class PreparedVotes:
 
 def prepare_votes(votes: pd.DataFrame, members: pd.DataFrame, congress: int) -> PreparedVotes:
     """Select state-representing senators using metadata, not hardcoded IDs."""
-    chamber_members = members[(members["congress"] == congress) & (members["chamber"] == "Senate")].copy()
+    congress_members = members[members["congress"] == congress]
+    chamber_members = congress_members[congress_members["chamber"] == "Senate"].copy()
     # Voteview's nationally representing President/VP records have state code 99.
     nonstate = (chamber_members["state_icpsr"] == 99) | (chamber_members["state_abbrev"] == "USA")
     excluded = [
@@ -148,6 +149,19 @@ def prepare_votes(votes: pd.DataFrame, members: pd.DataFrame, congress: int) -> 
     unknown_members = set(chamber_votes["icpsr"]) - set(members["icpsr"])
     if unknown_members:
         raise ValueError(f"Congress {congress}: votes lack metadata for {sorted(unknown_members)}.")
+    # Senate vote files also contain presidential positions. Explain their
+    # existing metadata exclusion without overriding any eligible Senate record.
+    already_excluded = {entry["id"] for entry in excluded}
+    non_senate = congress_members[
+        (congress_members["chamber"] != "Senate")
+        & congress_members["icpsr"].isin(chamber_votes["icpsr"])
+        & ~congress_members["icpsr"].isin(chamber_members.index)
+        & ~congress_members["icpsr"].isin(already_excluded)
+    ].drop_duplicates("icpsr", keep="last")
+    excluded.extend(
+        {"id": int(row.icpsr), "name": row.bioname, "reason": f"non-Senate office ({row.chamber})"}
+        for row in non_senate.itertuples()
+    )
     chamber_votes = chamber_votes[chamber_votes["icpsr"].isin(chamber_members.index)]
     if chamber_votes.duplicated(["icpsr", "rollnumber"]).any():
         raise ValueError(f"Congress {congress}: duplicate member/roll-call records.")

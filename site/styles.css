@@ -1249,3 +1249,258 @@ footer>a:not(.brand) {
     font-size:11px;
   }
 }
+
+.congress-current {
+  font-size:12px;
+  font-weight:600;
+}
+
+.timeline-panel {
+  margin-top:16px;
+  padding:22px 26px 18px;
+  border:1px solid var(--line);
+  border-radius:6px;
+  background:var(--white);
+}
+
+.timeline-heading {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  margin-bottom:16px;
+}
+
+.timeline-heading .eyebrow {
+  margin-bottom:4px;
+  color:var(--muted);
+  font-size:8px;
+}
+
+#congress-readout {
+  font:normal 23px var(--serif);
+  letter-spacing:-.3px;
+}
+
+.timeline-navigation {
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.timeline-navigation button {
+  width:35px;
+  height:35px;
+  background:var(--paper);
+  border:1px solid var(--line);
+  border-radius:4px;
+  font-size:18px;
+}
+
+.timeline-navigation button:disabled {
+  opacity:.35;
+  cursor:default;
+}
+
+#timeline-status {
+  font-size:10px;
+  color:var(--muted);
+  min-width:85px;
+  text-align:right;
+  margin-right:6px;
+}
+
+#congress-slider {
+  --progress:100%;
+  width:100%;
+  margin:0;
+  height:24px;
+  appearance:none;
+  background:transparent;
+  cursor:ew-resize;
+}
+
+#congress-slider::-webkit-slider-runnable-track {
+  height:3px;
+  border-radius:2px;
+  background:linear-gradient(to right,var(--green) var(--progress),var(--line) var(--progress));
+}
+
+#congress-slider::-webkit-slider-thumb {
+  appearance:none;
+  width:17px;
+  height:17px;
+  margin-top:-7px;
+  border-radius:50%;
+  background:var(--orange);
+  border:3px solid var(--white);
+  box-shadow:0 0 0 1px var(--orange);
+}
+
+#congress-slider::-moz-range-track {
+  height:3px;
+  border-radius:2px;
+  background:var(--line);
+}
+
+#congress-slider::-moz-range-progress {
+  height:3px;
+  background:var(--green);
+}
+
+#congress-slider::-moz-range-thumb {
+  width:12px;
+  height:12px;
+  border-radius:50%;
+  background:var(--orange);
+  border:3px solid var(--white);
+  box-shadow:0 0 0 1px var(--orange);
+}
+
+.timeline-dots {
+  display:grid;
+  grid-template-columns:repeat(var(--congress-count,119),minmax(0,1fr));
+  margin:0 3px;
+}
+
+.timeline-dot {
+  padding:0;
+  height:20px;
+  min-width:0;
+  border:0;
+  background:transparent;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.timeline-dot::after {
+  content:"";
+  width:3px;
+  height:3px;
+  border-radius:50%;
+  background:#a3b09f;
+  flex:none;
+}
+
+.timeline-dot:hover::after,.timeline-dot[aria-current=true]::after {
+  background:var(--orange);
+  width:6px;
+  height:6px;
+}
+
+.timeline-years {
+  height:22px;
+  margin-top:3px;
+  position:relative;
+  font:9px var(--sans);
+  color:var(--muted);
+}
+
+.timeline-years span {
+  position:absolute;
+  white-space:nowrap;
+  transform:translateX(-50%);
+}
+
+.timeline-years .first { transform:none; }
+.timeline-years .last { transform:translateX(-100%); }
+
+.timeline-help {
+  margin:8px 0 0;
+  font-size:10px;
+  line-height:1.7;
+  color:var(--muted);
+}
+
+.point-label {
+  font:11px var(--sans);
+  font-weight:600;
+  fill:var(--ink);
+  stroke:var(--white);
+  stroke-width:4px;
+  stroke-linejoin:round;
+  paint-order:stroke;
+}
+
+.outlier-inspector {
+  margin:-15px 0 32px;
+  border:1px solid var(--line);
+  padding:0 24px;
+  background:#eef1e8;
+  border-radius:5px;
+}
+
+.outlier-inspector summary {
+  font:normal 21px var(--serif);
+}
+
+.outlier-body {
+  padding-bottom:18px;
+}
+
+.outlier-body p {
+  font-size:11px;
+  line-height:1.8;
+  color:#5f7165;
+  margin:0 0 14px;
+}
+
+.outlier-list {
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px;
+  margin-bottom:18px;
+}
+
+.outlier-button {
+  text-align:left;
+  border:1px solid #d0d9c9;
+  background:var(--white);
+  padding:12px;
+  border-radius:4px;
+}
+
+.outlier-button[aria-pressed=true] {
+  border-color:var(--orange);
+  box-shadow:inset 0 0 0 1px var(--orange);
+}
+
+.outlier-button strong,.outlier-button span {
+  display:block;
+}
+
+.outlier-button strong {
+  font-size:11px;
+  font-weight:600;
+  line-height:1.4;
+}
+
+.outlier-button span {
+  font-size:9px;
+  line-height:1.7;
+  margin-top:5px;
+  color:var(--muted);
+}
+
+.outlier-body .outlier-caution {
+  margin-bottom:0;
+  font-size:10px;
+}
+
+@media(max-width:760px) {
+  .congress-current { font-size:11px; }
+  .timeline-panel { padding:20px 16px 15px; }
+  #congress-readout { font-size:21px; }
+  #timeline-status { min-width:0; max-width:65px; font-size:9px; }
+  .timeline-navigation { gap:6px; }
+  .timeline-navigation button { width:30px; height:32px; }
+  .timeline-years { font-size:8px; }
+  .timeline-help { font-size:9px; }
+  .timeline-dot::after { width:2px; height:2px; }
+  .outlier-inspector { padding:0 17px; }
+  .outlier-inspector summary { font-size:20px; }
+  .outlier-list { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .outlier-button { padding:10px; }
+  .point-label { font-size:10px; }
+}
