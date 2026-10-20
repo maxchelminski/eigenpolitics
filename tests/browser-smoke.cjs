@@ -47,6 +47,15 @@ async function run() {
     assert.equal(await target.locator("#congress-next").isDisabled(), position === congresses.length - 1);
   };
   const chartTicks = () => page.locator("#main-chart .chart-tick").allTextContents();
+  const hasIdeologyPair = node => Number.isFinite(node.nominate_dim1) && Number.isFinite(node.nominate_dim2);
+  const snapshots = new Map();
+  const snapshotFor = async congress => {
+    if (!snapshots.has(congress)) snapshots.set(congress,
+      await (await page.request.get(new URL(`data/congresses/${congress}.json`, base).href)).json());
+    return snapshots.get(congress);
+  };
+  const chartBounds = target => target.locator("#main-chart svg").evaluate(svg =>
+    ["xMin", "xMax", "yMin", "yMax"].map(key => Number(svg.dataset[key])));
   try {
     await page.goto(base, { waitUntil: "networkidle" });
     await page.locator("#main-chart .point").first().waitFor();
@@ -84,40 +93,53 @@ async function run() {
     results.push("Keyboard Home/End/arrows, previous/next controls, and boundary states");
 
     await selectCongress(119);
-    await page.locator("#senator-search").fill("Rubio");
-    assert.equal(await page.locator("#search-results button").count(), 0);
-    assert.match(await page.locator("#search-results").innerText(), /Rubio is excluded from this Congress/i);
-    assert.equal(await page.locator('#main-chart .point[data-id="41102"]').count(), 0);
+    const snapshot119 = await snapshotFor(119);
+    const policy = snapshot119.provenance.parameters;
+    const requiredVotes = Math.max(20, Math.ceil(.1 * snapshot119.provenance.source_rollcall_denominator));
+    assert.equal(policy.minimum_usable_votes, 20);
+    assert.equal(policy.minimum_participation_rate, .1);
+    assert.equal(snapshot119.provenance.effective_minimum_votes, requiredVotes);
+    assert.ok(snapshot119.nodes.every(node => node.votes_cast >= requiredVotes), "Every retained senator meets the shared voting-record threshold");
+    for (const [id, name] of [[41102, "Rubio"], [42508, "Darline"], [42304, "Vance"]]) {
+      const exclusion = snapshot119.provenance.excluded_members.find(node => node.id === id);
+      assert.ok(exclusion, `${name} exclusion is recorded`);
+      assert.match(exclusion.reason, /insufficient voting record/);
+      assert.equal(exclusion.effective_minimum_votes, requiredVotes);
+      await page.locator("#senator-search").fill(name);
+      assert.equal(await page.locator("#search-results button").count(), 0);
+      assert.match(await page.locator("#search-results").innerText(), /is excluded from this Congress/i);
+      assert.ok((await page.locator("#search-results").innerText()).includes(exclusion.reason));
+      assert.equal(await page.locator(`#main-chart .point[data-id="${id}"]`).count(), 0);
+    }
     await selectCongress(118);
     await page.locator("#senator-search").fill("Rubio");
     await page.locator("#search-results button").first().click();
     assert.match(await page.locator("#senator-detail").innerText(), /Rubio/i);
     await selectCongress(119);
-    await page.locator("#senator-search").fill("Darline");
+    await page.locator("#senator-search").fill("Armstrong");
     await page.locator("#search-results button").first().click();
-    assert.match(await page.locator("#senator-detail").innerText(), /Darline/i);
-    assert.match(await page.locator("#senator-detail").innerText(), /Low record coverage/);
+    assert.match(await page.locator("#senator-detail").innerText(), /Armstrong/i);
+    assert.match(await page.locator("#senator-detail").innerText(), /RECORD COVERAGE/);
     await page.locator("#senator-search").fill("no-senator-has-this-name");
     assert.match(await page.locator("#search-results").innerText(), /No matching/);
     await page.locator("#senator-search").fill("");
-    results.push("Rubio excluded in 119 but retained in 118; search explains exclusions and low coverage");
+    results.push("One 20-vote/10% rule excludes brief records in 119; Rubio remains searchable in 118");
 
     assert.equal(await page.locator("#outlier-inspector").isVisible(), true);
-    const snapshot119 = await (await page.request.get(new URL("data/congresses/119.json", base).href)).json();
     const inspectorButtons = page.locator("#outlier-list .outlier-button");
     assert.ok(await inspectorButtons.count() > 0, "Outlier inspector has selectable members");
     const inspectorIDs = await inspectorButtons.evaluateAll(buttons => buttons.map(button => Number(button.dataset.id)));
     assert.ok(inspectorIDs.every(id => snapshot119.nodes.some(node => node.id === id)), "Inspector names refer to included senators");
-    for (const [id, name] of [[42508, /Darline/i], [42507, /Armstrong/i]]) {
+    for (const [id, name] of [[42507, /Armstrong/i], [41104, /Paul/i]]) {
       const button = page.locator(`#outlier-list .outlier-button[data-id="${id}"]`);
       assert.match(await button.innerText(), name);
       await button.click();
       assert.match(await page.locator("#senator-detail").innerText(), name);
       assert.equal(await page.locator(`#main-chart .point[data-id="${id}"]`).getAttribute("class").then(value => value.includes("selected")), true);
     }
-    assert.ok(snapshot119.nodes.every(node => !/TRUMP|VANCE|RUBIO/i.test(node.name)), "119th analyzed nodes exclude Trump, Vance, and Rubio");
-    assert.ok(snapshot119.provenance.excluded_members.some(node => node.id === 41102), "Rubio exclusion is recorded in provenance");
-    assert.match(await page.locator("#outlier-office-note").innerText(), /Marco Rubio is excluded/);
+    assert.ok(snapshot119.nodes.every(node => !/TRUMP|VANCE|RUBIO|GRAHAM, Darline/i.test(node.name)), "119th analyzed nodes exclude executive and insufficient-record entries");
+    assert.equal(await page.locator('#outlier-list .outlier-button[data-id="42508"]').count(), 0);
+    assert.match(await page.locator("#outlier-office-note").innerText(), /Rubio: insufficient voting record/);
     results.push("Outlier names are traceable to included senators and select their plotted records");
 
     const spectralTicks = await chartTicks();
@@ -129,23 +151,53 @@ async function run() {
     assert.notEqual(await page.locator("#edge-count").innerText(), edgesBefore);
     await page.locator('[data-view="brokerage"]').click();
     assert.match(await page.locator("#plot-title").innerText(), /paths/);
+    await page.locator('[data-view="ideology"]').click();
+    assert.deepEqual(await chartBounds(page), [-1, 1, -1, 1]);
+    assert.match(await page.locator("#plot-title").innerText(), /Ideology across Congresses/);
+    assert.equal(await page.locator(".interpretation").isVisible(), false);
+    const paul = snapshot119.nodes.find(node => node.id === 41104);
+    assert.ok(hasIdeologyPair(paul));
+    // Infer the actual plot rectangle from its grid, so this checks the source
+    // coordinates without repeating chart layout constants from application code.
+    const plotted = await page.locator('#main-chart .point[data-id="41104"]').evaluate(point => {
+      const grid = [...point.ownerSVGElement.querySelectorAll(".chart-grid")];
+      const xs = grid.filter(line => line.getAttribute("x1") === line.getAttribute("x2"))
+        .map(line => Number(line.getAttribute("x1")));
+      const ys = grid.filter(line => line.getAttribute("y1") === line.getAttribute("y2"))
+        .map(line => Number(line.getAttribute("y1")));
+      return [
+        (Number(point.getAttribute("cx")) - Math.min(...xs)) / (Math.max(...xs) - Math.min(...xs)),
+        (Math.max(...ys) - Number(point.getAttribute("cy"))) / (Math.max(...ys) - Math.min(...ys)),
+      ];
+    });
+    assert.ok(Math.abs(plotted[0] - (paul.nominate_dim1 + 1) / 2) < 1e-10, "Ideology x uses the source NOMINATE score");
+    assert.ok(Math.abs(plotted[1] - (paul.nominate_dim2 + 1) / 2) < 1e-10, "Ideology y uses the source NOMINATE score");
+    assert.equal(new URL(page.url()).searchParams.get("view"), "ideology");
+    await page.reload({ waitUntil: "networkidle" });
+    await waitForCongress(119);
+    assert.equal(await page.locator('[data-view="ideology"]').getAttribute("aria-pressed"), "true");
+    assert.deepEqual(await chartBounds(page), [-1, 1, -1, 1]);
     await page.locator('[data-view="spectral"]').click();
-    results.push("Network threshold and all chart modes");
+    assert.equal(await page.locator(".interpretation").isVisible(), false);
+    results.push("Network threshold; source NOMINATE coordinates, fixed common-scale bounds, and view URL persistence");
 
     const compareCongresses = [...new Set([first.congress, 96, current.congress])].filter(congress => congresses.some(item => item.congress === congress));
-    for (const view of ["spectral", "network", "brokerage"]) {
+    for (const view of ["spectral", "ideology", "network", "brokerage"]) {
       await page.locator(`[data-view="${view}"]`).click();
       const ticks = await chartTicks();
       for (const congress of compareCongresses) {
         await selectCongress(congress);
         await assertTimeline(congress);
         assert.equal(new URL(page.url()).searchParams.get("congress"), String(congress));
-        assert.equal(await page.locator("#main-chart .point").count(), congresses.find(item => item.congress === congress).members);
+        const snapshot = await snapshotFor(congress);
+        const expectedPoints = view === "ideology" ? snapshot.nodes.filter(hasIdeologyPair).length : snapshot.members;
+        assert.equal(await page.locator("#main-chart .point").count(), expectedPoints);
         assert.deepEqual(await chartTicks(), ticks, `${view} axes stay fixed for Congress ${congress}`);
+        if (view === "ideology") assert.deepEqual(await chartBounds(page), [-1, 1, -1, 1]);
       }
     }
     await page.locator('[data-view="spectral"]').click();
-    results.push("Input-only scrubbing synchronizes chart, URL, timeline, and fixed axes in all three views");
+    results.push("Input-only scrubbing synchronizes chart, URL, timeline, and fixed axes in all four views");
 
     const baselinePosition = congresses.findIndex(item => item.congress === 96);
     await page.locator("#congress-dots .timeline-dot").nth(baselinePosition).click();
@@ -155,6 +207,15 @@ async function run() {
     await page.locator("#compare-button").click();
     await page.locator("#comparison-panel svg").first().waitFor();
     assert.equal(await page.locator("#comparison-panel svg").count(), 2);
+    await page.locator('[data-view="ideology"]').click();
+    await page.waitForFunction(() => document.querySelector("#comparison-panel h3")?.textContent.includes("common ideological scale"));
+    const comparisonBounds = await page.locator("#comparison-panel svg").evaluateAll(charts =>
+      charts.map(svg => ["xMin", "xMax", "yMin", "yMax"].map(key => Number(svg.dataset[key]))));
+    assert.deepEqual(comparisonBounds, [[-1, 1, -1, 1], [-1, 1, -1, 1]]);
+    assert.ok((await page.locator("#comparison-panel svg > title").allTextContents()).every(title => title.includes("NOMINATE")));
+    await page.locator('[data-view="spectral"]').click();
+    await page.waitForFunction(() => document.querySelector("#comparison-panel h3")?.textContent.includes("visual frame"));
+    assert.ok((await page.locator("#comparison-panel svg > title").allTextContents()).every(title => title.includes("spectral")));
     await page.locator("#compare-button").click();
     await page.locator("#history-metric").selectOption("gini_betweenness");
     assert.match(await page.locator("#history-chart-title").innerText(), /concentrated/);
@@ -185,6 +246,8 @@ async function run() {
       await fs.mkdir(imageDir, { recursive: true });
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({ path: path.join(imageDir, "explorer-desktop.png"), fullPage: true });
+      await page.locator('[data-view="ideology"]').click();
+      await page.locator("#explorer").screenshot({ path: path.join(imageDir, "explorer-ideology.png") });
       await page.locator('[data-view="network"]').click();
       await inputRange(page, "#edge-threshold", 0.8);
       await page.locator("#explorer").screenshot({ path: path.join(imageDir, "explorer-network.png") });
@@ -209,6 +272,45 @@ async function run() {
     await slider.press("End");
     await waitForCongress(current.congress);
     results.push("390px and 320px layouts without horizontal overflow");
+
+    const missingScores = await browser.newPage();
+    const missingErrors = [];
+    missingScores.on("pageerror", error => missingErrors.push(error.message));
+    try {
+      const fixture = structuredClone(snapshot119);
+      const missing = fixture.nodes[0];
+      missing.name = "FIXTURE, Missing Score";
+      missing.nominate_dim1 = null;
+      missing.nominate_dim2 = .5;
+      await missingScores.route("**/data/congresses/119.json", route => route.fulfill({ json: fixture }));
+      const missingURL = new URL(base);
+      missingURL.searchParams.set("congress", "119");
+      missingURL.searchParams.set("view", "ideology");
+      await missingScores.goto(missingURL.href, { waitUntil: "networkidle" });
+      await waitForCongress(119, missingScores);
+      assert.equal(await missingScores.locator("#main-chart .point").count(), fixture.nodes.filter(hasIdeologyPair).length);
+      assert.equal(await missingScores.locator(`#main-chart .point[data-id="${missing.id}"]`).count(), 0);
+      assert.equal(await missingScores.locator("#score-coverage").isVisible(), true);
+      assert.match(await missingScores.locator("#score-coverage").innerText(), /no complete NOMINATE score/);
+      await missingScores.locator("#senator-search").fill("missing score");
+      await missingScores.locator("#search-results button").click();
+      assert.match(await missingScores.locator("#senator-detail").innerText(), /remains in the graph analysis/);
+      assert.equal(await missingScores.locator("#senator-detail .detail-values strong").nth(0).innerText(), "—");
+      assert.equal(await missingScores.locator("#senator-detail .detail-values strong").nth(1).innerText(), "0.500");
+      await missingScores.locator('[data-view="spectral"]').click();
+      assert.equal(await missingScores.locator("#main-chart .point").count(), fixture.nodes.length);
+      assert.equal(await missingScores.locator(`#main-chart .point[data-id="${missing.id}"]`).count(), 1);
+      assert.equal(await missingScores.locator("#score-coverage").isVisible(), false);
+      await missingScores.locator('[data-view="ideology"]').click();
+      fixture.nodes.forEach(node => { node.nominate_dim1 = null; node.nominate_dim2 = null; });
+      await missingScores.reload({ waitUntil: "networkidle" });
+      await waitForCongress(119, missingScores);
+      assert.equal(await missingScores.locator("#main-chart .point").count(), 0);
+      assert.match(await missingScores.locator("#main-chart").innerText(), /No NOMINATE scores available/);
+      assert.equal(await missingScores.locator("#score-coverage").isVisible(), true);
+      assert.deepEqual(missingErrors, [], "Missing scores should never cause chart errors");
+    } finally { await missingScores.close(); }
+    results.push("Missing NOMINATE pairs are omitted and reported, remain searchable, and never become false zero-score points");
 
     const race = await browser.newPage();
     const raceErrors = [];

@@ -46,7 +46,10 @@ def refresh_date(detail: dict) -> str:
 def finish(figure, output: Path, name: str, svg: bool) -> None:
     figure.savefig(output / f"{name}.png", dpi=180)
     if svg:
-        figure.savefig(output / f"{name}.svg")
+        path = output / f"{name}.svg"
+        figure.savefig(path)
+        path.write_text("\n".join(line.rstrip() for line in path.read_text(encoding="utf-8").splitlines()) + "\n",
+                        encoding="utf-8", newline="\n")
     plt.close(figure)
     print(f"Rendered {output / (name + '.png')}")
 
@@ -115,15 +118,6 @@ def comparison(left: dict, right: dict, output: Path, svg: bool) -> None:
         for node in detail["nodes"]:
             color = DEMOCRATIC if node["party_code"] == 100 else REPUBLICAN if node["party_code"] == 200 else OTHER
             axis.scatter(node["x"], node["y"], s=43, color=color, alpha=.8, edgecolor=PAPER, linewidth=.6, zorder=3)
-        low_activity = [node for node in detail["nodes"] if node["participation_rate"] < .05]
-        for node in low_activity:
-            axis.scatter(node["x"], node["y"], s=115, facecolor="none", edgecolor=GOLD, linewidth=1.2, zorder=4)
-        if low_activity:
-            node = max(low_activity, key=lambda item: item["betweenness"])
-            axis.annotate(f"{node['name'].split(',')[0].title()}: {node['votes_cast']} usable votes",
-                          (node["x"], node["y"]), xytext=(14, -30), textcoords="offset points",
-                          fontsize=9, color=INK, arrowprops={"arrowstyle": "-", "color": GOLD, "lw": 1},
-                          bbox={"facecolor": PAPER, "edgecolor": "none", "alpha": .95}, zorder=6)
         axis.set_title(f"{detail['congress']}th Congress  ·  {detail['start_year']}–{detail['end_year']}",
                        loc="left", pad=28, fontsize=15, fontfamily="DejaVu Serif")
         axis.text(0, 1.025, f"{detail['members']} senators  /  {detail['rollcalls']:,} roll calls"
@@ -136,13 +130,11 @@ def comparison(left: dict, right: dict, output: Path, svg: bool) -> None:
     axes[0].set_ylabel("Third eigenvector coordinate", labelpad=10)
     handles = [Line2D([], [], color=color, marker="o", linestyle="none", markersize=7, label=label)
                for color, label in [(DEMOCRATIC, "Democratic"), (REPUBLICAN, "Republican"), (OTHER, "Other / Independent")]]
-    handles.append(Line2D([], [], color=GOLD, marker="o", markerfacecolor="none", linestyle="none",
-                          markersize=9, label="Under 5% usable votes"))
     figure.legend(handles=handles, loc="lower left", bbox_to_anchor=(.079, .188),
-                  ncol=4, frameon=False, fontsize=10, columnspacing=2)
+                  ncol=3, frameon=False, fontsize=10, columnspacing=2)
     figure.text(.085, .145, "READ WITH CARE  Shared plotting scale; eigenvectors are estimated separately for each Congress, "
-                "not a common ideology scale.\nShort service and nonparticipation encoded as 0 can create apparent bridges."
-                " The 5% ring flags interpretation risk; it does not filter senators.",
+                "not a common ideology scale.\nELIGIBILITY  At least 20 usable votes and 10% of usable Senate roll calls."
+                " Missingness can still affect the graph.",
                 fontsize=9.3, color=INK, linespacing=1.7)
     figure.text(.085, .065, "SOURCE  Voteview · voteview.com/data"
                 f"  |  Fetched {refresh_date(right)}  |  Latest recorded vote {right['last_vote_date']}"

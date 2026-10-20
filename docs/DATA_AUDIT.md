@@ -1,6 +1,23 @@
 # 119th Congress outlier audit
 
-> **Current analysis:** Methodology **1.1.0** excludes **Marco Rubio (Voteview ID `41102`) from Congress 119 only**, at the author's request, because his very short record is unreliable for this full-Congress analysis. His Senate membership was legitimate; this is an explicit analytical choice. The exclusion occurs before the graph and statistics are computed and persists through refreshes. It leaves earlier Congress records under the usual rules and does not automatically apply to future Congresses. The tables below deliberately preserve the **superseded 1.0.0 baseline**, including Rubio's original point; they do not describe the current dashboard's coordinates or membership.
+> **Current analysis:** Methodology **1.2.0** requires at least **20 usable votes and 10% coverage** in every Congress. The denominator is fixed from eligible state senators' usable roll calls before member filtering. This replaces methodology 1.1.0's Rubio-specific exception; there are no exclusions by name or identifier. After the current-population summary, the original diagnostic sections deliberately preserve the **superseded 1.0.0 baseline**, including Rubio's original point; those coordinates and membership do not describe the current dashboard. See [Methodology](METHODOLOGY.md#from-roll-calls-to-a-matrix) for the active rule.
+
+## Current population rule
+
+Applying methodology 1.2.0 to the same October 20, 2026 source files gives **915 eligible roll calls**, a minimum of **92 usable votes**, and **101 retained members**. This count covers service throughout the Congress, rather than 101 occupied seats.
+
+| Short record | Usable votes | Result under the common rule |
+| --- | ---: | --- |
+| J. D. Vance | 1 | Excluded: below 92 |
+| Marco Rubio | 8 | Excluded: below 92 |
+| Darline Graham | 55 | Excluded: below 92 |
+| Alan Armstrong | 191 | Retained |
+
+Trump's presidential record remains ineligible on office metadata. Rubio's earlier Senate records are evaluated under the same rule as every other member's; there is no permanent or Congress-specific blacklist. Armstrong's retained partial-term record illustrates the limit of this threshold: it filters the shortest records without eliminating all tenure-related effects. The [current JSON](../site/data/congresses/119.json) records exact exclusions and settings and may change after a source refresh.
+
+Across the cached history, the rule removes **253 previously plotted member-Congress records in 89 Congresses** relative to methodology 1.1.0. These are records, not necessarily 253 distinct people. All 119 Congresses retain enough data for the analysis; the smallest retained population is 26 in Congress 1. This population audit establishes the filter's effect, not statistical robustness to other thresholds.
+
+## Original diagnostic snapshot
 
 This audit was performed on **October 20, 2026** in response to unexpectedly isolated Republican points. It describes the original maintained **methodology 1.0.0** snapshot, generated at `2026-10-20T16:25:27Z`, with **915 roll calls dated January 9, 2025–September 30, 2026**. Its 103 nodes represented people who served during the Congress, including departures and replacements; they were not a roster of the 100 senators serving on the final date.
 
@@ -32,7 +49,7 @@ No invalid office or invented identity was found among the named plotted points 
 - **Donald Trump (ID 99912) is absent from the plotted graph.** The raw votes file has 145 Senate-labelled records for this identifier, but the members file identifies him as `chamber = President`, `state_icpsr = 99`, and `state_abbrev = USA`. The maintained pipeline's member-metadata eligibility check excludes him. Filtering only the votes file's chamber would incorrectly admit these records.
 - **J. D. Vance (ID 42304) is also absent from the plotted graph.** His Ohio Senate record has one usable vote, on January 9, 2025, and the original maintained pipeline excludes records with fewer than two usable votes. The [Senate's Ohio service history](https://www.senate.gov/states/OH/senators.htm) records his resignation on January 10, 2025. His brief Senate service in the 119th Congress is legitimate; it does not supply a meaningful full-Congress voting profile.
 
-The preserved thesis scripts exclude IDs `42304`, `41102`, and `99912` explicitly. The maintained methodology 1.0.0 instead used chamber/state metadata and a general minimum-record rule. The two-vote minimum protects the calculation from some invalid inputs, but it is not a statistical adequacy threshold. Methodology 1.1.0 retains those rules and adds the explicit Rubio exclusion for Congress 119 described above.
+The preserved thesis scripts exclude IDs `42304`, `41102`, and `99912` explicitly. The maintained methodology 1.0.0 instead used chamber/state metadata and a two-vote computational minimum. Methodology 1.1.0 temporarily added a Congress-119-only Rubio exception. The current 1.2.0 specification replaces both the two-vote minimum and the named exception with a universal threshold. The original files remain unchanged.
 
 ## Diagnostic: observed votes versus zero-filled tenure
 

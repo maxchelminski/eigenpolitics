@@ -39,19 +39,20 @@
         <div class="stats-grid" id="stats" aria-live="polite"></div>
         <div class="chart-layout">
           <div class="plot-panel">
-            <div class="plot-heading"><div><p class="eyebrow" id="plot-eyebrow">SPECTRAL EMBEDDING</p><h3 id="plot-title">Two dimensions of division</h3></div><div class="view-tabs" role="group" aria-label="Chart view"><button type="button" data-view="spectral" aria-pressed="true">Geometry</button><button type="button" data-view="network" aria-pressed="false">Network</button><button type="button" data-view="brokerage" aria-pressed="false">Brokerage</button></div></div>
+            <div class="plot-heading"><div><p class="eyebrow" id="plot-eyebrow">SPECTRAL EMBEDDING</p><h3 id="plot-title">Two dimensions of division</h3></div><div class="view-tabs" role="group" aria-label="Chart view"><button type="button" data-view="spectral" aria-pressed="true">Geometry</button><button type="button" data-view="ideology" aria-pressed="false">Ideology</button><button type="button" data-view="network" aria-pressed="false">Network</button><button type="button" data-view="brokerage" aria-pressed="false">Brokerage</button></div></div>
             <div class="plot-toolbar"><div id="party-legend" class="legend" aria-label="Party legend"></div><label class="search-label" for="senator-search"><span aria-hidden="true">⌕</span><input id="senator-search" type="search" placeholder="Find a senator" autocomplete="off"></label></div>
             <div class="network-controls" id="network-controls" hidden><label for="edge-threshold">Show ties with weight ≥ <output id="threshold-value">0.80</output></label><input type="range" id="edge-threshold" min="0.5" max="0.99" step="0.01" value="0.80"><span id="edge-count"></span></div>
             <div id="main-chart" class="main-chart" aria-live="polite"></div>
+            <p id="score-coverage" class="score-coverage" hidden></p>
             <div id="search-results" class="search-results" hidden></div>
-            <div class="plot-footer"><span><span class="tiny-circle"></span> Fixed axes across Congresses · Select a senator</span><span id="plot-range"></span></div>
+            <div class="plot-footer"><span id="plot-source">Fixed axes · Select a senator</span><span id="plot-range"></span></div>
           </div>
           <aside class="insight-panel" aria-labelledby="insight-title">
             <p class="eyebrow">READING THE NETWORK</p>
             <h3 id="insight-title">A chamber,<br>reconstructed.</h3>
             <p id="view-description">Each point is a senator. Nearby positions reflect similar patterns in the weighted voting network. Party colors are added after the analysis.</p>
             <div id="senator-detail" class="senator-detail"><span class="detail-label">EXPLORE A POINT</span><p>Select a dot or search by name to see a senator’s coordinates and brokerage.</p></div>
-            <div class="interpretation"><span class="note-mark">↳</span><p id="interpretation-text">The axes come from the graph’s normalized Laplacian. They are structural coordinates, not calibrated ideology scores.</p></div>
+            <div class="interpretation" hidden><span class="note-mark">↳</span><p id="interpretation-text"></p></div>
           </aside>
         </div>
         <div class="timeline-panel" aria-label="Congress timeline">
@@ -62,17 +63,17 @@
           <input id="congress-slider" type="range" min="0" max="118" step="1" value="118" aria-describedby="timeline-help" disabled>
           <div id="congress-dots" class="timeline-dots" role="group" aria-label="Select a Congress"></div>
           <div id="congress-years" class="timeline-years" aria-hidden="true"></div>
-          <p id="timeline-help" class="timeline-help">Drag to update, select a point, or use the arrow keys. Axes stay fixed; eigenvectors are estimated separately for each Congress.</p>
+          <p id="timeline-help" class="timeline-help">Drag to update, select a point, or use the arrow keys.</p>
         </div>
         <div id="comparison-panel" class="comparison-panel" hidden></div>
         <p id="data-notes" class="data-notes"></p>
         <details id="outlier-inspector" class="outlier-inspector" open hidden>
-          <summary>Who are the 119th Congress outliers?</summary>
+          <summary>Inspect the 119th Congress voting records</summary>
           <div class="outlier-body">
-            <p>Some separated points have short service records; this model fills votes outside their service with zeros. Select a name to locate the point and inspect its coverage.</p>
+            <p>Select a name to locate the point and inspect its record. Every Congress uses the same minimum: 20 usable votes and 10% of usable Senate roll calls.</p>
             <div id="outlier-list" class="outlier-list"></div>
             <p id="outlier-office-note"></p>
-            <p class="outlier-caution">These are points to inspect, not an ideological ranking. The two highest points, <a href="https://www.dgraham.senate.gov/" target="_blank" rel="noopener">Darline Graham</a> and <a href="https://www.armstrong.senate.gov/about/" target="_blank" rel="noopener">Alan Armstrong</a>, are verified senators who joined during 2026. Partial service and voting disagreement have different interpretations.</p>
+            <p class="outlier-caution">The threshold removes very short records. Partial service can still affect spectral positions because missing votes are encoded as zero.</p>
           </div>
         </details>
       </section>
@@ -87,7 +88,8 @@
     </section>
     <section class="methodology-section" aria-label="Methodology and data details">
       <details><summary>What these measures can—and cannot—tell us</summary><div class="details-body"><p>These are descriptive properties of a constructed voting graph. They do not measure a senator’s influence directly, establish causation, or isolate polarization from the agenda and attendance. A Congress is a two-year cohort, so replacement members can appear alongside predecessors.</p><p>The eigenvector sign is arbitrary. Display orientation is made consistent by convention; coordinates across Congresses are not a shared ideological scale. Projection proximity is only a partial view of the full graph. Network ties show transformed correlation, not a percentage of votes in agreement.</p><p>The displayed sweep conductance is the best cut found along a sorted spectral coordinate, an upper-bound estimate of minimum conductance—not an exact Cheeger constant. The Gini coefficient describes the distribution of computed brokerage.</p></div></details>
-      <details><summary>How this companion differs from the original scripts</summary><div class="details-body"><p>The original thesis files and scripts are preserved in the repository. This version removes self-loops consistently, assigns edge distances on the graph actually used for betweenness, and avoids zero-length paths. The normalized spectral sweep uses a degree-adjusted coordinate. These corrections can change results relative to the thesis.</p><p>Methodology 1.1.0 excludes Marco Rubio from the 119th Congress because his very brief Senate service before becoming secretary of state provides only eight usable votes in the audited snapshot. This explicit analytical choice is applied before constructing the graph, so every coordinate and metric is recomputed. His earlier Senate records remain included.</p><p>Current data may also differ from the thesis’s data snapshot. Consult the repository’s methodology and provenance documentation before comparing exact values.</p></div></details>
+      <details><summary>How the common ideological scale works</summary><div class="details-body"><p>The Ideology view uses Voteview’s published <code>nominate_dim1</code> and <code>nominate_dim2</code> scores on fixed −1 to +1 axes. These NOMINATE estimates share a scale across Congresses. They are career-level positions: within the same source snapshot, a continuing senator normally stays at the same point as you change Congress. Membership changes, and later source revisions can update scores.</p><p>The first dimension mainly reflects economic liberal–conservative voting. The second captures other divisions whose meaning changes by era. Common score units do not make the issues of 1789 identical to those of today. Missing scores are omitted from this view and are never replaced with zero.</p><p>Geometry, Network, Brokerage, and the historical metrics retain the thesis’s graph analysis. Independently estimated eigenvectors are structural coordinates, not calibrated ideology scores. Rotating them to match adjacent Congresses would align pictures without establishing an ideological scale.</p><p>Source and assumptions: <a href="https://voteview.com/articles/data_help_members" target="_blank" rel="noopener">Voteview member data</a> and <a href="https://voteview.com/about" target="_blank" rel="noopener">NOMINATE dimensions</a>.</p></div></details>
+      <details><summary>How this companion differs from the original scripts</summary><div class="details-body"><p>The original thesis files and scripts are preserved in the repository. This version removes self-loops consistently, assigns edge distances on the graph actually used for betweenness, and avoids zero-length paths. The normalized spectral sweep uses a degree-adjusted coordinate. These corrections can change results relative to the thesis.</p><p>Methodology 1.2.0 requires at least 20 usable votes and 10% of the Congress’s usable state-Senate roll calls, rounded up. The denominator is fixed before filtering members. This rule replaces the earlier Rubio exception and applies to every senator in every Congress before the graph and metrics are calculated. It screens very short records but does not eliminate all missingness effects.</p><p>Current data may also differ from the thesis’s data snapshot. Consult the repository’s methodology and provenance documentation before comparing exact values.</p></div></details>
       <details><summary>Data provenance and refresh status</summary><div class="details-body"><p>Source: <a href="https://voteview.com/data" target="_blank" rel="noopener">Voteview congressional roll-call data</a>. The site reads a locally generated snapshot and checks for a new manifest periodically while open. Collection and computation happen in the Python pipeline, not in the browser.</p><pre id="provenance-output">Loading provenance…</pre><a id="download-congress" href="data/index.json" download>Download selected Congress JSON</a><span class="download-divider">/</span><button class="inline-button" id="download-csv" type="button">Download historical metrics CSV</button></div></details>
     </section>
   </main>

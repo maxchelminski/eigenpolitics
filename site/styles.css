@@ -347,6 +347,7 @@ h3 {
 
 .view-tabs {
   display:flex;
+  flex-shrink:0;
   background:#f1f2eb;
   padding:3px;
   border-radius:5px;
@@ -586,6 +587,13 @@ h3 {
   line-height:1.8;
   color:var(--muted);
   margin:12px 0 34px;
+}
+
+.score-coverage {
+  font-size:10px;
+  line-height:1.7;
+  color:var(--muted);
+  margin:8px 0;
 }
 
 .network-controls {
@@ -1083,7 +1091,7 @@ footer>a:not(.brand) {
   }
   .view-tabs button {
     flex:1;
-    padding:9px 12px;
+    padding:9px 8px;
   }
   .plot-toolbar {
     gap:12px;

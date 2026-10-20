@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
+from math import ceil
 
 import networkx as nx
 import numpy as np
@@ -18,19 +19,13 @@ from scipy.linalg import eigh
 from scipy.sparse.csgraph import connected_components, laplacian
 
 from . import METHODOLOGY_VERSION
+from .ideology import nominate_fields, nominate_provenance
 
 EDGE_THRESHOLD = 0.5
 DISTANCE_EPSILON = 1e-6
-MIN_USABLE_VOTES = 2
+MIN_USABLE_VOTES = 20
+MIN_PARTICIPATION_RATE = 0.10
 CAST_VALUES = {0: 0, 1: 1, 2: 1, 3: 1, 4: -1, 5: -1, 6: -1, 7: 0, 8: 0, 9: 0}
-# Explicit research-scope decisions are Congress-specific, separate from the
-# general metadata and minimum-vote checks. Apply these before constructing
-# the vote matrix so excluded records cannot affect correlations or metrics.
-CONGRESS_EXCLUSIONS = {
-    119: {
-        41102: "explicit Congress 119 exclusion: brief Senate service before becoming secretary of state",
-    },
-}
 # Official mapping: https://voteview.com/articles/data_help_parties
 PARTIES = {
     1: "Federalist", 13: "Democratic-Republican", 22: "Adams",
@@ -138,10 +133,17 @@ class PreparedVotes:
     members: pd.DataFrame
     excluded: list[dict]
     source_rollcalls: int
+    source_rollcall_denominator: int
+    effective_minimum_votes: int
 
 
 def prepare_votes(votes: pd.DataFrame, members: pd.DataFrame, congress: int) -> PreparedVotes:
-    """Select senators using metadata, recorded-vote checks, and scoped exclusions."""
+    """Apply the same minimum voting record to every senator and Congress.
+
+    Eligibility requires at least 20 usable votes and 10% of the Congress's
+    usable state-Senate roll calls. The denominator is fixed before filtering
+    any short records, so removing a senator cannot lower the threshold.
+    """
     congress_members = members[members["congress"] == congress]
     chamber_members = congress_members[congress_members["chamber"] == "Senate"].copy()
     # Voteview's nationally representing President/VP records have state code 99.
@@ -170,38 +172,59 @@ def prepare_votes(votes: pd.DataFrame, members: pd.DataFrame, congress: int) -> 
         {"id": int(row.icpsr), "name": row.bioname, "reason": f"non-Senate office ({row.chamber})"}
         for row in non_senate.itertuples()
     )
-    for identifier, reason in CONGRESS_EXCLUSIONS.get(congress, {}).items():
-        if identifier in chamber_members.index:
-            excluded.append({"id": identifier, "name": str(chamber_members.loc[identifier, "bioname"]),
-                             "reason": reason})
-            chamber_members = chamber_members.drop(index=identifier)
     chamber_votes = chamber_votes[chamber_votes["icpsr"].isin(chamber_members.index)]
     if chamber_votes.duplicated(["icpsr", "rollnumber"]).any():
         raise ValueError(f"Congress {congress}: duplicate member/roll-call records.")
     chamber_votes["value"] = chamber_votes["cast_code"].map(CAST_VALUES)
     source_rollcalls = int(chamber_votes["rollnumber"].nunique())
     matrix = chamber_votes.pivot(index="icpsr", columns="rollnumber", values="value").fillna(0).sort_index()
+    matrix = matrix.loc[:, (matrix != 0).any(axis=0)]
+    source_rollcall_denominator = matrix.shape[1]
+    effective_minimum_votes = max(MIN_USABLE_VOTES, ceil(MIN_PARTICIPATION_RATE * source_rollcall_denominator))
+    if source_rollcall_denominator < MIN_USABLE_VOTES:
+        raise ValueError(
+            f"Congress {congress}: insufficient usable data; at least {MIN_USABLE_VOTES} "
+            f"state-Senate roll calls are required ({source_rollcall_denominator} available)."
+        )
+
+    def record_exclusion(identifier: int, usable_votes: int, reason: str | None = None) -> None:
+        excluded.append({
+            "id": int(identifier), "name": str(chamber_members.loc[identifier, "bioname"]),
+            "reason": reason or (
+                f"insufficient voting record: {usable_votes} usable {'vote' if usable_votes == 1 else 'votes'}; "
+                f"requires {effective_minimum_votes} "
+                f"(at least {MIN_USABLE_VOTES} and {MIN_PARTICIPATION_RATE:.0%} of "
+                f"{source_rollcall_denominator} Senate roll calls)"
+            ),
+            "votes_cast": usable_votes,
+            "participation_rate": usable_votes / source_rollcall_denominator,
+            "source_rollcall_denominator": source_rollcall_denominator,
+            "effective_minimum_votes": effective_minimum_votes,
+        })
+
     for identifier in chamber_members.index.difference(matrix.index):
-        excluded.append({"id": int(identifier), "name": str(chamber_members.loc[identifier, "bioname"]),
-                         "reason": "no recorded Senate votes"})
+        record_exclusion(identifier, 0)
     # Removing an ineligible row can leave an all-zero column. Dropping that
     # column may make another row constant, so reach a stable usable matrix.
     while len(matrix):
         matrix = matrix.loc[:, (matrix != 0).any(axis=0)]
         usable = (matrix != 0).sum(axis=1)
         variable = matrix.std(axis=1, ddof=0) > 0
-        keep = (usable >= MIN_USABLE_VOTES) & variable
+        keep = (usable >= effective_minimum_votes) & variable
         for identifier in matrix.index[~keep]:
-            excluded.append({
-                "id": int(identifier), "name": str(chamber_members.loc[identifier, "bioname"]),
-                "reason": "fewer than 2 usable votes" if usable.loc[identifier] < MIN_USABLE_VOTES else "constant encoded vote row",
-            })
+            record_exclusion(
+                identifier, int(usable.loc[identifier]),
+                None if usable.loc[identifier] < effective_minimum_votes else "constant encoded vote row",
+            )
         matrix = matrix.loc[keep]
         if keep.all():
             break
     if matrix.shape[0] < 3 or matrix.shape[1] < 2:
         raise ValueError(f"Congress {congress}: insufficient usable data for spectral analysis.")
-    return PreparedVotes(matrix, chamber_members.loc[matrix.index], excluded, source_rollcalls)
+    return PreparedVotes(
+        matrix, chamber_members.loc[matrix.index], excluded, source_rollcalls,
+        source_rollcall_denominator, effective_minimum_votes,
+    )
 
 
 def analyze_congress(votes: pd.DataFrame, members: pd.DataFrame, rollcalls: pd.DataFrame,
@@ -250,6 +273,7 @@ def analyze_congress(votes: pd.DataFrame, members: pd.DataFrame, rollcalls: pd.D
             "id": identifier, "name": str(metadata.loc[identifier, "bioname"]),
             "party": PARTIES.get(int(parties[i]), f"Other ({parties[i]})"),
             "party_code": int(parties[i]), "state": str(metadata.loc[identifier, "state_abbrev"]),
+            **nominate_fields(metadata.loc[identifier]),
             "x": float(x[i]), "y": float(y[i]), "betweenness": float(centrality[i]),
             "votes_cast": int((matrix.iloc[i] != 0).sum()),
             "participation_rate": float((matrix.iloc[i] != 0).mean()),
@@ -259,10 +283,16 @@ def analyze_congress(votes: pd.DataFrame, members: pd.DataFrame, rollcalls: pd.D
         "provenance": {
             **provenance, "methodology_version": METHODOLOGY_VERSION,
             "source_rollcalls": prepared.source_rollcalls,
+            "source_rollcall_denominator": prepared.source_rollcall_denominator,
+            "effective_minimum_votes": prepared.effective_minimum_votes,
             "excluded_members": prepared.excluded,
             "parameters": {
                 "similarity": "(Pearson correlation + 1) / 2; zero diagonal",
                 "missing_vote_encoding": 0, "minimum_usable_votes": MIN_USABLE_VOTES,
+                "minimum_participation_rate": MIN_PARTICIPATION_RATE,
+                "minimum_voting_record_rule": "max(minimum_usable_votes, ceil(minimum_participation_rate * source_rollcall_denominator))",
+                "source_rollcall_denominator": prepared.source_rollcall_denominator,
+                "effective_minimum_votes": prepared.effective_minimum_votes,
                 "centrality_edge_threshold": EDGE_THRESHOLD,
                 "centrality_distance": "max(1 - similarity, 0.000001)",
                 "distance_epsilon": DISTANCE_EPSILON,
@@ -270,4 +300,5 @@ def analyze_congress(votes: pd.DataFrame, members: pd.DataFrame, rollcalls: pd.D
             },
         },
     }
+    result["provenance"]["ideology"] = nominate_provenance(result["nodes"])
     return result

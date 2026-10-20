@@ -25,19 +25,22 @@ This repository brings together the original thesis and analysis scripts, an int
 | --- | --- |
 | Historical comparison | How has the Senate's spectral connectivity changed across Congresses? |
 | Spectral map | Which senators occupy similar positions in the voting network? |
+| Ideology | How does the chamber look on Voteview's shared NOMINATE scale? |
 | Network and brokerage views | Which strong voting ties and shortest-path bridge positions appear in the graph? |
 | Congress detail | What do the eigenvalues and network statistics reveal about a selected Senate? |
 | Member inspection | Where does a particular senator sit in that Congress's structure? |
 | Source and method notes | What was downloaded, when was it retrieved, and how were the results computed? |
 
-Drag the timeline beneath the chamber plot, select one of its Congress points, or use the arrow keys to move through all 119 Senates. The plot updates on input, with fixed axes across Congresses. Geometry and network views share the same limits; brokerage has its own fixed vertical scale. Independently estimated eigenvectors still do not form a shared ideological scale.
+Drag the timeline beneath the chamber plot, select one of its Congress points, or use the arrow keys to move through all 119 Senates. The plot updates on input, with fixed axes across Congresses. Geometry and network views share the same limits; brokerage has its own fixed vertical scale. Choose **Ideology** for Voteview's published NOMINATE coordinates on a shared scale from −1 to +1.
 
-The 119th Congress also has named inspection shortcuts and a [source-level outlier audit](docs/DATA_AUDIT.md). Trump and Vance are excluded by the metadata and minimum-record rules. Methodology **1.1.0** also excludes **Marco Rubio from the 119th Congress analysis**, at the author's request, because his brief service leaves only eight usable votes in the source snapshot. This is an explicit analytical choice: Rubio's Senate membership was legitimate, and his earlier Congress records remain included under the usual rules. The exclusion is scoped to Congress 119 and does not automatically apply to future Congresses. It is applied before the graph and statistics are calculated, and persists through data refreshes.
+Methodology **1.2.0** applies the same minimum record rule to every Congress: a senator needs **at least 20 usable votes and coverage of at least 10% of the eligible Senate roll calls**. The cutoff is calculated before filtering members. No one is excluded by name or identifier. The rule runs before calculating the graph, so every coordinate and statistic reflects the retained population. It replaces methodology 1.1.0's Rubio-specific exception.
 
-Several remaining striking points belong to real senators with partial-term records; zero-filled time outside service can create apparent separation. The audit preserves the superseded 1.0.0 diagnostics, including Rubio's original point, to distinguish that effect from observed voting disagreement.
+The 119th Congress also has named inspection shortcuts and a [source-level outlier audit](docs/DATA_AUDIT.md). Its historical diagnostics show why short records can produce misleading positions under zero filling. The threshold removes the shortest records; remaining differences in service length still matter.
 
 <details>
-<summary>See the mobile explorer and network view</summary>
+<summary>See the ideology, network, and mobile views</summary>
+
+![Ideology view using Voteview NOMINATE scores on a shared scale](docs/images/explorer-ideology.png)
 
 <p align="center">
   <img src="docs/images/explorer-mobile.png" alt="The Eigenpolitics explorer on a narrow mobile screen" width="340">
@@ -115,6 +118,9 @@ Other useful commands:
 # Rebuild the complete available history, reusing downloaded source files
 python scripts/refresh_data.py
 
+# Fetch fresh source files for every Congress before a longitudinal NOMINATE study
+python scripts/refresh_data.py --congress all --refresh
+
 # Recompute a selection of Congresses
 python scripts/refresh_data.py --congress 1 37 96 119
 
@@ -123,6 +129,8 @@ python scripts/refresh_data.py --offline
 ```
 
 The pipeline downloads Senate votes, members, and roll-call metadata from [Voteview](https://voteview.com/data). Source files are cached in `.cache/`; generated, browsable results are stored in `site/data/`. Refreshing one Congress retains the other generated Congresses.
+
+An automatic current-Congress refresh can combine a newer NOMINATE estimate with older cached historical estimates. Before research comparing ideological positions over time, refresh all Congresses as shown above and inspect the recorded source dates. Rebuilding from cache alone does not update those source estimates.
 
 **“Current” means the most recent successfully retrieved source snapshot.** The local browser does not directly stream Senate votes. Upstream publication and a successful pipeline refresh determine the available data; reload the page to check it immediately.
 
@@ -140,7 +148,7 @@ flowchart LR
 
 The second-smallest eigenvalue, usually written **λ₂**, measures a form of graph connectivity. Smaller positive values can indicate a stronger bottleneck between groups. They do not by themselves prove literal disconnection, legislative paralysis, or a causal account of polarization.
 
-Spectral coordinates summarize the voting graph within a Congress; they are not a universal left–right ideology scale. Their signs are mathematically arbitrary, and the companion documents its orientation convention. Attendance, abstention, changing agendas, membership turnover, and graph construction all affect interpretation.
+Geometry summarizes each Congress's voting graph, while Ideology displays a separate model: Voteview's published NOMINATE estimates. Within a consistent source snapshot, moving the timeline shows changing chamber composition rather than a continuing senator's ideological movement. See [Voteview's field documentation](https://voteview.com/articles/data_help_members) and the [methodology notes](docs/METHODOLOGY.md#nominate-common-scale-view) for the career-static assumption, refresh considerations, and historical limits.
 
 Read [Methodology](docs/METHODOLOGY.md) for the vote encoding, exclusions, similarity transformation, Laplacian, centrality definitions, provenance, and limitations. Read [Thesis guide](docs/THESIS.md) for the original argument and the relationship between the archived work and the refreshed companion.
 

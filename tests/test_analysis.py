@@ -25,15 +25,15 @@ def fixture_frames():
         [119, "Senate", 42304, 99, "USA", 200, "VANCE, J. D."],
         [119, "President", 99912, 99, "USA", 200, "TRUMP, Donald"],
     ], columns=["congress", "chamber", "icpsr", "state_icpsr", "state_abbrev", "party_code", "bioname"])
-    patterns = {1: [1, 6, 1, 6], 2: [6, 1, 6, 1], 3: [1, 1, 6, 6], 4: [1, 9, 9, 9],
-                42304: [1, 1, 6, 6]}
+    patterns = {1: [1, 6, 1, 6] * 5, 2: [6, 1, 6, 1] * 5, 3: [1, 1, 6, 6] * 5,
+                4: [1] + [9] * 19, 42304: [1, 1, 6, 6] * 5}
     votes = pd.DataFrame(
         [[119, "Senate", identifier, roll + 1, code]
          for identifier, codes in patterns.items() for roll, code in enumerate(codes)],
         columns=["congress", "chamber", "icpsr", "rollnumber", "cast_code"],
     )
     rollcalls = pd.DataFrame(
-        [[119, "Senate", number, f"2025-01-{number + 2:02d}"] for number in range(1, 5)],
+        [[119, "Senate", number, f"2025-01-{number + 2:02d}"] for number in range(1, 21)],
         columns=["congress", "chamber", "rollnumber", "date"],
     )
     return votes, members, rollcalls
@@ -113,61 +113,111 @@ class ScientificTests(unittest.TestCase):
         excluded_ids = {entry["id"] for entry in prepared.excluded}
         self.assertEqual(excluded_ids, {4, 42304})
 
-    def test_rubio_scope_exclusion_applies_only_to_congress_119(self):
+    def test_eligibility_depends_on_record_not_name_or_congress(self):
         votes, members, _ = fixture_frames()
         votes.loc[votes["icpsr"] == 1, "icpsr"] = 41102
         members.loc[members["icpsr"] == 1, ["icpsr", "bioname"]] = [41102, "RUBIO, Marco"]
-        # Keep a fourth valid senator so removing Rubio still yields a graph.
-        other_member = members[members["icpsr"] == 41102].copy()
-        other_member[["icpsr", "bioname"]] = [5, "EXAMPLE, Other"]
-        other_votes = votes[votes["icpsr"] == 41102].copy()
-        other_votes["icpsr"] = 5
-        votes = pd.concat([votes, other_votes])
-        members = pd.concat([members, other_member])
-
-        prepared = prepare_votes(votes, members, 119)
-        # Four nonconstant usable votes exceed the generic two-vote minimum:
-        # this is an explicit scope decision, not a disguised sparse-vote rule.
-        self.assertNotIn(41102, prepared.matrix.index)
-        self.assertNotIn(41102, prepared.members.index)
-        rubio_exclusions = [entry for entry in prepared.excluded if entry["id"] == 41102]
-        self.assertEqual(rubio_exclusions, [{
-            "id": 41102, "name": "RUBIO, Marco",
-            "reason": "explicit Congress 119 exclusion: brief Senate service before becoming secretary of state",
-        }])
-
-        for congress in (118, 120):
+        for congress in (1, 118, 119, 120):
             historical_votes, historical_members = votes.copy(), members.copy()
             historical_votes["congress"] = historical_members["congress"] = congress
             historical = prepare_votes(historical_votes, historical_members, congress)
             self.assertIn(41102, historical.matrix.index)
             self.assertNotIn(41102, {entry["id"] for entry in historical.excluded})
 
-    def test_excluded_rubio_votes_cannot_change_analysis(self):
+    def test_excluded_short_record_cannot_change_analysis(self):
         votes, members, rollcalls = fixture_frames()
         expected = analyze_congress(votes, members, rollcalls, 119, {})
-        rubio_member = members[members["icpsr"] == 1].copy()
-        rubio_member[["icpsr", "bioname"]] = [41102, "RUBIO, Marco"]
-        rubio_votes = votes[votes["icpsr"] == 1].copy()
-        rubio_votes["icpsr"] = 41102
-        rubio_votes["cast_code"] = [1, 6, 6, 1]
+        short_member = members[members["icpsr"] == 1].copy()
+        short_member[["icpsr", "bioname"]] = [5, "EXAMPLE, Short record"]
+        short_votes = votes[votes["icpsr"] == 1].copy()
+        short_votes["icpsr"] = 5
+        short_votes["cast_code"] = [1, 6] + [9] * 18
         actual = analyze_congress(
-            pd.concat([votes, rubio_votes]), pd.concat([members, rubio_member]),
+            pd.concat([votes, short_votes]), pd.concat([members, short_member]),
             rollcalls, 119, {},
         )
-        self.assertIn(41102, {entry["id"] for entry in actual["provenance"]["excluded_members"]})
+        self.assertIn(5, {entry["id"] for entry in actual["provenance"]["excluded_members"]})
         # Equality of all published analytical fields verifies that this is a
         # reanalysis without the member, rather than hiding a plotted node.
         actual.pop("provenance")
         expected.pop("provenance")
         self.assertEqual(actual, expected)
 
+    def test_absolute_and_percentage_threshold_boundaries_are_inclusive(self):
+        for rollcall_count, required in ((200, 20), (201, 21), (400, 40)):
+            votes, members, _ = fixture_frames()
+            members = members[members.icpsr.isin([1, 2, 3, 4])].copy()
+            extra = members[members.icpsr == 4].copy()
+            extra["icpsr"] = 5
+            members = pd.concat([members, extra])
+            patterns = {
+                1: [1 if i % 2 else 6 for i in range(rollcall_count)],
+                2: [6 if i % 2 else 1 for i in range(rollcall_count)],
+                3: [1 if i % 4 < 2 else 6 for i in range(rollcall_count)],
+                4: [1 if i % 2 else 6 for i in range(required - 1)] + [9] * (rollcall_count - required + 1),
+                5: [1 if i % 2 else 6 for i in range(required)] + [9] * (rollcall_count - required),
+            }
+            votes = pd.DataFrame(
+                [[119, "Senate", identifier, roll + 1, code]
+                 for identifier, pattern in patterns.items() for roll, code in enumerate(pattern)],
+                columns=votes.columns,
+            )
+            prepared = prepare_votes(votes, members, 119)
+            self.assertNotIn(4, prepared.matrix.index)
+            self.assertIn(5, prepared.matrix.index)
+            self.assertEqual(prepared.effective_minimum_votes, required)
+            self.assertEqual(prepared.source_rollcall_denominator, rollcall_count)
+            excluded = next(entry for entry in prepared.excluded if entry["id"] == 4)
+            self.assertEqual(excluded["votes_cast"], required - 1)
+            self.assertEqual(excluded["effective_minimum_votes"], required)
+            self.assertEqual(excluded["source_rollcall_denominator"], rollcall_count)
+
+    def test_threshold_denominator_is_fixed_before_short_records_are_removed(self):
+        votes, members, _ = fixture_frames()
+        # Expand the twenty baseline calls to two hundred. Only the short-record
+        # member votes on call201; its removal must not lower ceil(10% *201)=21.
+        copies = []
+        for block in range(10):
+            copy = votes.copy()
+            copy["rollnumber"] += block * 20
+            copies.append(copy)
+        votes = pd.concat(copies)
+        last_call = pd.DataFrame([[119, "Senate", 4, 201, 1]], columns=votes.columns)
+        prepared = prepare_votes(pd.concat([votes, last_call]), members, 119)
+        self.assertEqual(prepared.matrix.shape[1], 200)
+        self.assertEqual(prepared.source_rollcall_denominator, 201)
+        self.assertEqual(prepared.effective_minimum_votes, 21)
+        self.assertNotIn(4, prepared.matrix.index)
+
+    def test_fewer_than_twenty_rollcalls_fails_without_relaxing_policy(self):
+        votes, members, _ = fixture_frames()
+        with self.assertRaisesRegex(ValueError, "at least 20.*19 available"):
+            prepare_votes(votes[votes.rollnumber <= 19], members, 119)
+
+    def test_denominator_excludes_non_senator_and_all_zero_rollcalls(self):
+        votes, members, _ = fixture_frames()
+        added = pd.DataFrame([
+            [119, "Senate", 99912, 21, 1],
+            [119, "Senate", 42304, 22, 1],
+            [119, "Senate", 1, 23, 9],
+        ], columns=votes.columns)
+        prepared = prepare_votes(pd.concat([votes, added]), members, 119)
+        self.assertEqual(prepared.source_rollcalls, 21)
+        self.assertEqual(prepared.source_rollcall_denominator, 20)
+        self.assertEqual(prepared.matrix.shape[1], 20)
+
+    def test_insufficient_eligible_members_fails_explicitly(self):
+        votes, members, _ = fixture_frames()
+        votes.loc[(votes.icpsr == 3) & (votes.rollnumber > 19), "cast_code"] = 9
+        with self.assertRaisesRegex(ValueError, "insufficient usable data"):
+            prepare_votes(votes, members, 119)
+
     def test_presidential_positions_and_sparse_senator_exclusions_are_explained(self):
         votes, members, rollcalls = fixture_frames()
         # A departing senator's state metadata is valid, but one usable vote
         # cannot support a correlation. Presidential positions are not senators.
         members.loc[members["icpsr"] == 42304, ["state_icpsr", "state_abbrev"]] = [35, "OH"]
-        votes.loc[votes["icpsr"] == 42304, "cast_code"] = [1, 9, 9, 9]
+        votes.loc[votes["icpsr"] == 42304, "cast_code"] = [1] + [9] * 19
         presidential_votes = votes[votes["icpsr"] == 1].copy()
         presidential_votes["icpsr"] = 99912
         votes = pd.concat([votes, presidential_votes])
@@ -175,7 +225,7 @@ class ScientificTests(unittest.TestCase):
         exclusions = {entry["id"]: entry for entry in result["provenance"]["excluded_members"]}
         self.assertEqual(exclusions[99912],
                          {"id": 99912, "name": "TRUMP, Donald", "reason": "non-Senate office (President)"})
-        self.assertEqual(exclusions[42304]["reason"], "fewer than 2 usable votes")
+        self.assertIn("1 usable vote; requires 20", exclusions[42304]["reason"])
         self.assertEqual({node["id"] for node in result["nodes"]}, {1, 2, 3})
 
     def test_non_senate_metadata_does_not_override_eligible_senate_record(self):
@@ -195,26 +245,28 @@ class ScientificTests(unittest.TestCase):
     def test_eligibility_is_rechecked_after_dropping_empty_rollcalls(self):
         votes, members, _ = fixture_frames()
         votes.loc[votes["icpsr"] == 4, "cast_code"] = 9
-        added_votes = [[119, "Senate", identifier, 5, 1 if identifier == 4 else 0]
+        added_votes = [[119, "Senate", identifier, 21, 1 if identifier == 4 else 0]
                        for identifier in votes["icpsr"].unique()]
-        added_votes += [[119, "Senate", 5, roll, 1 if roll < 5 else 0] for roll in range(1, 6)]
+        added_votes += [[119, "Senate", 5, roll, 1 if roll < 21 else 0] for roll in range(1, 22)]
         votes = pd.concat([votes, pd.DataFrame(added_votes, columns=votes.columns)])
         extra_member = members.iloc[[0]].copy()
         extra_member["icpsr"] = 5
         members = pd.concat([members, extra_member])
         prepared = prepare_votes(votes, members, 119)
         self.assertNotIn(5, prepared.matrix.index)
-        self.assertNotIn(5, prepared.matrix.columns)
-        self.assertEqual(prepared.matrix.shape, (3, 4))
+        self.assertNotIn(21, prepared.matrix.columns)
+        self.assertEqual(prepared.matrix.shape, (3, 20))
 
     def test_payload_satisfies_data_contract(self):
         votes, members, rollcalls = fixture_frames()
         result = analyze_congress(votes, members, rollcalls, 119, {"sources": {}})
-        self.assertEqual(result["last_vote_date"], "2025-01-06")
+        self.assertEqual(result["last_vote_date"], "2025-01-22")
         self.assertEqual(result["members"], 3)
-        self.assertEqual(result["rollcalls"], 4)
+        self.assertEqual(result["rollcalls"], 20)
         self.assertEqual(result["data_file"], "congresses/119.json")
-        self.assertEqual(result["provenance"]["parameters"]["minimum_usable_votes"], 2)
+        self.assertEqual(result["provenance"]["parameters"]["minimum_usable_votes"], 20)
+        self.assertEqual(result["provenance"]["parameters"]["minimum_participation_rate"], .10)
+        self.assertEqual(result["provenance"]["effective_minimum_votes"], 20)
         self.assertTrue(all(edge["source"] != edge["target"] for edge in result["edges"]))
 
     def test_missing_rollcall_metadata_is_rejected(self):

@@ -205,7 +205,7 @@ function renderStats() {
 }
 function renderLegend() {
   const groups = new Map();
-  state.data.nodes.forEach((node) => {
+  coordinates(state.data, state.view).forEach(({ node }) => {
     const group = groups.get(node.party_code) || { name: node.party, count: 0, color: partyColor(node) };
     group.count++;
     groups.set(node.party_code, group);
@@ -218,7 +218,14 @@ function renderLegend() {
   }));
 }
 function coordinates(data, view) {
+  if (view === "ideology") return data.nodes
+    .filter(node => Number.isFinite(node.nominate_dim1) && Number.isFinite(node.nominate_dim2))
+    .map(node => ({ node, x: node.nominate_dim1, y: node.nominate_dim2 }));
   return data.nodes.map((node) => ({ node, x: Number(node.x), y: view === "brokerage" ? Number(node.betweenness) : Number(node.y) }));
+}
+function boundsFor(view) {
+  return view === "ideology" ? [[-1, 1], [-1, 1]] :
+    [state.axes.x, view === "brokerage" ? state.axes.betweenness : state.axes.y];
 }
 function matches(node) {
   return !state.query || `${node.name} ${prettyName(node.name)} ${node.state} ${node.party}`.toLowerCase().includes(state.query);
@@ -228,11 +235,11 @@ function buildScatter(data, { compact = false, view = state.view, sharedBounds =
   const width = compact ? 560 : (mobile ? 400 : 860), height = compact ? 280 : (mobile ? 315 : 355);
   const margin = { left: compact ? 50 : 58, right: 24, top: 25, bottom: 51 };
   const points = coordinates(data, view);
-  const [xb, yb] = sharedBounds || [state.axes.x, view === "brokerage" ? state.axes.betweenness : state.axes.y];
+  const [xb, yb] = sharedBounds || boundsFor(view);
   const sx = (v) => margin.left + (v - xb[0]) / (xb[1] - xb[0]) * (width - margin.left - margin.right);
   const sy = (v) => height - margin.bottom - (v - yb[0]) / (yb[1] - yb[0]) * (height - margin.top - margin.bottom);
   const svg = el("svg", { viewBox: `0 0 ${width} ${height}`, role: "group", "aria-label": `${ordinal(data.congress)} Senate ${view} chart. Use Tab to explore senators.`, "data-x-min": xb[0], "data-x-max": xb[1], "data-y-min": yb[0], "data-y-max": yb[1] });
-  svg.append(el("title", {}, `${ordinal(data.congress)} Senate: ${view === "brokerage" ? "betweenness versus Fiedler coordinate" : "two-dimensional spectral embedding"}`));
+  svg.append(el("title", {}, `${ordinal(data.congress)} Senate: ${view === "ideology" ? "NOMINATE common ideological scale" : view === "brokerage" ? "betweenness versus Fiedler coordinate" : "two-dimensional spectral embedding"}`));
   for (let i = 0; i <= 4; i++) {
     const x = xb[0] + i * (xb[1] - xb[0]) / 4, y = yb[0] + i * (yb[1] - yb[0]) / 4;
     svg.append(el("line", { x1: sx(x), x2: sx(x), y1: margin.top, y2: height - margin.bottom, class: "chart-grid" }));
@@ -242,8 +249,9 @@ function buildScatter(data, { compact = false, view = state.view, sharedBounds =
   }
   svg.append(el("line", { x1: sx(0), x2: sx(0), y1: margin.top, y2: height - margin.bottom, class: "chart-zero" }));
   svg.append(el("line", { x1: margin.left, x2: width - margin.right, y1: sy(0), y2: sy(0), class: "chart-zero" }));
-  svg.append(el("text", { x: (width + margin.left) / 2, y: height - 6, "text-anchor": "middle", class: "chart-label" }, "Fiedler coordinate · v₂"));
-  svg.append(el("text", { transform: `translate(13,${(height - margin.bottom) / 2}) rotate(-90)`, "text-anchor": "middle", class: "chart-label" }, view === "brokerage" ? "Betweenness centrality" : "Secondary coordinate · v₃"));
+  svg.append(el("text", { x: (width + margin.left) / 2, y: height - 6, "text-anchor": "middle", class: "chart-label" }, view === "ideology" ? "NOMINATE · dimension 1" : "Fiedler coordinate · v₂"));
+  svg.append(el("text", { transform: `translate(13,${(height - margin.bottom) / 2}) rotate(-90)`, "text-anchor": "middle", class: "chart-label" }, view === "ideology" ? "NOMINATE · dimension 2" : view === "brokerage" ? "Betweenness centrality" : "Secondary coordinate · v₃"));
+  if (!points.length) svg.append(el("text", { x: width / 2, y: height / 2, "text-anchor": "middle", class: "chart-label" }, "No NOMINATE scores available for this Congress."));
   if (view === "network") {
     const byID = new Map(points.map((p) => [String(p.node.id), p]));
     const edges = (data.edges || []).filter((edge) => edge.weight >= state.threshold);
@@ -256,8 +264,10 @@ function buildScatter(data, { compact = false, view = state.view, sharedBounds =
   }
   points.forEach(({ node, x, y }) => {
     const isSelected = !compact && String(state.selected) === String(node.id);
-    const circle = el("circle", { cx: sx(x), cy: sy(y), r: compact ? 3.5 : (mobile ? 3.8 : 4.4), fill: partyColor(node), class: `point${!compact && !matches(node) ? " dim" : ""}${isSelected ? " selected" : ""}`, tabindex: compact ? -1 : 0, role: "button", "aria-label": `${prettyName(node.name)}, ${node.party}, ${node.state}. Fiedler ${format(x)}, betweenness ${format(node.betweenness, 4)}` });
-    circle.append(el("title", {}, `${prettyName(node.name)} · ${node.party} · ${node.state}\nFiedler: ${format(x, 4)} · Brokerage: ${format(node.betweenness, 4)}`));
+    const description = view === "ideology" ? `NOMINATE 1: ${format(x, 3)} · NOMINATE 2: ${format(y, 3)}` :
+      `Fiedler: ${format(node.x, 4)} · Brokerage: ${format(node.betweenness, 4)}`;
+    const circle = el("circle", { cx: sx(x), cy: sy(y), r: compact ? 3.5 : (mobile ? 3.8 : 4.4), fill: partyColor(node), class: `point${!compact && !matches(node) ? " dim" : ""}${isSelected ? " selected" : ""}`, tabindex: compact ? -1 : 0, role: "button", "aria-label": `${prettyName(node.name)}, ${node.party}, ${node.state}. ${description}` });
+    circle.append(el("title", {}, `${prettyName(node.name)} · ${node.party} · ${node.state}\n${description}`));
     if (!compact) {
       const activate = () => { state.selected = node.id; renderDetail(); highlightPoints(); };
       circle.dataset.id = node.id;
@@ -285,7 +295,8 @@ function highlightPoints() {
 function renderChart() {
   if (!state.data) return;
   const config = {
-    spectral: ["SPECTRAL EMBEDDING", "Two dimensions of division", "Each point is a senator. Nearby positions reflect similar patterns in the weighted voting network. Party colors are added after the analysis.", "Axes stay fixed across Congresses. Eigenvectors are normalized separately, so this compares shapes without establishing a common ideological scale."],
+    spectral: ["SPECTRAL EMBEDDING", "Two dimensions of division", "Each point is a senator. Nearby positions reflect similar patterns in the weighted voting network. Party colors are added after the analysis.", ""],
+    ideology: ["NOMINATE COMMON SCALE", "Ideology across Congresses", "Voteview’s career-level NOMINATE scores place senators on a common scale. Move through Congresses to explore the changing membership.", ""],
     network: ["WEIGHTED VOTING NETWORK", "The ties between votes", "Lines connect senators whose transformed voting correlation meets the display threshold. Positions use the same spectral embedding as the geometry view.", "This slider changes the visible ties only. Spectral metrics use the full weighted graph; brokerage uses a separate 0.5 edge threshold."],
     brokerage: ["STRUCTURAL BROKERAGE", "Who lies on the paths?", "Height shows weighted shortest-path betweenness on a graph retaining ties of at least 0.5. Higher values identify more frequent intermediaries in this model.", "Short service can produce misleadingly high brokerage: missing and nonservice votes are coded zero. Check each member’s record coverage before interpreting a high score."],
   }[state.view];
@@ -293,8 +304,15 @@ function renderChart() {
   $("#plot-title").textContent = config[1];
   $("#view-description").textContent = config[2];
   $("#interpretation-text").textContent = config[3];
+  $("#interpretation-text").parentElement.hidden = !config[3];
   $("#network-controls").hidden = state.view !== "network";
   $("#main-chart").replaceChildren(buildScatter(state.data));
+  const missing = state.data.nodes.length - coordinates(state.data, state.view).length;
+  $("#score-coverage").hidden = state.view !== "ideology" || missing === 0;
+  $("#score-coverage").textContent = `${number(missing)} analyzed ${missing === 1 ? "senator has" : "senators have"} no complete NOMINATE score and ${missing === 1 ? "is" : "are"} omitted from this view.`;
+  $("#plot-source").textContent = state.view === "ideology" ? "Voteview NOMINATE · Select a senator" : "Fixed axes · Select a senator";
+  renderLegend();
+  renderDetail();
   renderSearch();
   highlightPoints();
 }
@@ -322,13 +340,7 @@ function renderOutliers() {
     $("#outlier-list").append(button);
   });
   const excluded = data.provenance?.excluded_members || [];
-  const officeNotes = [];
-  if (!data.nodes.some(node => node.id === 99912)) officeNotes.push("Donald Trump is excluded: his member metadata identifies the President, even though Voteview includes Senate-labelled positions.");
-  const vance = excluded.find(node => node.id === 42304);
-  if (vance) officeNotes.push(`JD Vance is excluded: ${vance.reason}.`);
-  const rubio = excluded.find(node => node.id === 41102);
-  if (rubio) officeNotes.push(`Marco Rubio is excluded from this Congress: ${rubio.reason}. Earlier Congresses retain his Senate records.`);
-  $("#outlier-office-note").textContent = officeNotes.join(" ");
+  $("#outlier-office-note").textContent = excluded.map(node => `${prettyName(node.name)}: ${node.reason}.`).join(" ");
 }
 function renderSearch() {
   const container = $("#search-results");
@@ -359,12 +371,17 @@ function renderDetail() {
   panel.append(html("span", "detail-label", "SELECTED SENATOR"), html("h4", "", prettyName(node.name)), html("p", "", `${node.party} · ${node.state}`));
   const values = html("div", "detail-values");
   const coverage = Number(node.votes_cast) / state.data.rollcalls;
-  [["FIEDLER", format(node.x, 4)], ["BROKERAGE", format(node.betweenness, 4)], ["ENCODED ±1 VOTES", number(node.votes_cast)], ["RECORD COVERAGE", `${format(coverage * 100, 1)}%`]].forEach(([label, value]) => {
+  const positions = state.view === "ideology" ?
+    [["NOMINATE 1", format(node.nominate_dim1)], ["NOMINATE 2", format(node.nominate_dim2)]] :
+    [["FIEDLER", format(node.x, 4)], ["BROKERAGE", format(node.betweenness, 4)]];
+  [...positions, ["ENCODED ±1 VOTES", number(node.votes_cast)], ["RECORD COVERAGE", `${format(coverage * 100, 1)}%`]].forEach(([label, value]) => {
     const item = html("div");
     item.append(html("span", "", label), html("strong", "", value));
     values.append(item);
   });
   panel.append(values);
+  if (state.view === "ideology" && (!Number.isFinite(node.nominate_dim1) || !Number.isFinite(node.nominate_dim2)))
+    panel.append(html("p", "coverage-warning", "No complete NOMINATE score is available. This senator remains in the graph analysis."));
   if (coverage < 0.1) panel.append(html("p", "coverage-warning", "Low record coverage. Zero-coded nonservice or missing votes can inflate apparent brokerage. This fraction is not a service-adjusted attendance rate."));
 }
 function renderHistory() {
@@ -421,24 +438,27 @@ async function renderComparison() {
   const panel = $("#comparison-panel");
   panel.hidden = !state.compare;
   if (!state.compare || !state.data) return;
-  const current = state.data;
+  const current = state.data, view = state.view;
   const baseline = state.index.congresses.find((d) => d.congress === 96);
   if (!baseline) { panel.replaceChildren(html("p", "", "The 96th Congress snapshot is not available. Refresh Congress 96 to enable this comparison.")); return; }
   try {
     const prior = await loadCongress(baseline);
-    if (!state.compare || state.data !== current) return;
-    const sharedBounds = [state.axes.x, state.axes.y];
-    panel.replaceChildren(html("h3", "", "Two chambers, one visual frame"), html("p", "", "Shared axis limits make the shapes easier to compare. Eigenvectors are normalized independently; they do not form a common ideological scale."));
+    if (!state.compare || state.data !== current || state.view !== view) return;
+    const sharedBounds = boundsFor(view);
+    panel.replaceChildren(html("h3", "", view === "ideology" ? "Two Senates on a common ideological scale" : "Two chambers, one visual frame"));
     const grid = html("div", "comparison-grid");
     [prior, current].forEach((data) => {
       const item = html("div"), caption = html("div", "comparison-caption");
-      caption.append(html("strong", "", `${ordinal(data.congress)} · ${period(data)}`), html("span", "", `λ₂ ${format(data.fiedler_value)}`));
-      item.append(caption, buildScatter(data, { compact: true, view: "spectral", sharedBounds }));
+      caption.append(html("strong", "", `${ordinal(data.congress)} · ${period(data)}`),
+        html("span", "", view === "ideology" ? `${coordinates(data, view).length} scored senators` : `Graph λ₂ ${format(data.fiedler_value)}`));
+      item.append(caption, buildScatter(data, { compact: true, view, sharedBounds }));
+      const missing = data.nodes.length - coordinates(data, view).length;
+      if (view === "ideology" && missing) item.append(html("p", "score-coverage", `${missing} senators without complete NOMINATE scores omitted.`));
       grid.append(item);
     });
     panel.append(grid);
   } catch (error) {
-    if (!state.compare || state.data !== current) return;
+    if (!state.compare || state.data !== current || state.view !== view) return;
     panel.replaceChildren(html("p", "", `Comparison unavailable: ${error.message}`));
   }
 }
@@ -474,7 +494,10 @@ async function init() {
     setFixedAxes(index);
     fillTimeline();
     renderSnapshot();
-    const requested = Number(new URLSearchParams(location.search).get("congress"));
+    const params = new URLSearchParams(location.search);
+    const requested = Number(params.get("congress"));
+    if (["spectral", "ideology", "network", "brokerage"].includes(params.get("view"))) state.view = params.get("view");
+    document.querySelectorAll("[data-view]").forEach(item => item.setAttribute("aria-pressed", String(item.dataset.view === state.view)));
     const initial = index.congresses.some((d) => d.congress === requested) ? requested : index.congresses.at(-1).congress;
     await selectCongress(initial, false);
     $("#compare-button").disabled = !index.congresses.some((d) => d.congress === 96);
@@ -493,8 +516,12 @@ $("#congress-prev").addEventListener("click", () => stepCongress(-1));
 $("#congress-next").addEventListener("click", () => stepCongress(1));
 document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => {
   state.view = button.dataset.view;
+  const url = new URL(location.href);
+  url.searchParams.set("view", state.view);
+  history.replaceState(null, "", url);
   document.querySelectorAll("[data-view]").forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
   renderChart();
+  renderComparison();
 }));
 $("#senator-search").addEventListener("input", (event) => { state.query = event.target.value.trim().toLowerCase(); renderChart(); });
 $("#edge-threshold").addEventListener("input", (event) => { state.threshold = Number(event.target.value); $("#threshold-value").textContent = state.threshold.toFixed(2); renderChart(); });

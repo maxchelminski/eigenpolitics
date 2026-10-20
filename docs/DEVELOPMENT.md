@@ -135,9 +135,11 @@ npm run test:browser
 npm run screenshots
 ```
 
-These checks exercise live timeline input, clickable Congress points, keyboard navigation, fixed axes across all views, rapid-selection races, failure rollback, named outlier inspection, search, comparison, downloads, and narrow layouts. The screenshots command replaces the desktop, mobile, and network screenshots under `docs/images/` with real captures of the current snapshot.
+These checks exercise live timeline input, clickable Congress points, keyboard navigation, fixed axes across all four views, NOMINATE source coordinates and missing scores, rapid-selection races, failure rollback, minimum-vote exclusions, search, comparison, downloads, and narrow layouts. The screenshots command replaces the desktop, mobile, ideology, and network screenshots under `docs/images/` with real captures of the current snapshot.
 
 The slider indexes the available manifest entries, so gaps in historical data do not create invalid selections. Requests carry a selection counter: only the latest selection can replace the chart, and a failed latest request restores the last displayed Congress. In-flight loads are shared and scoped to the manifest generation. `axis_bounds` is calculated during publication from all retained snapshots, so the browser does not download every Congress merely to establish a fixed plotting frame.
+
+Ideology has fixed `[-1, 1]` limits and uses the source `nominate_dim1` and `nominate_dim2` fields. A `view=ideology` URL preserves that mode when reloading. Missing score pairs are omitted only from that plot; the graph analysis and member search retain those senators. See [Methodology](METHODOLOGY.md#nominate-common-scale-view) for source-vintage considerations when refreshing longitudinal data.
 
 To use an installed Edge browser on Windows instead of downloading Chromium:
 

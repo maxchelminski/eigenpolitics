@@ -76,7 +76,11 @@ Shortest-path centrality is a model of structural position. It does not directly
 
 The first maintained snapshot exposed a consequential limitation inherited from zero-coding nonservice. In the superseded **methodology 1.0.0** build of the 119th Congress on October 20, 2026, Marco Rubio had only eight encoded votes among 915 roll calls, yet the largest computed betweenness, approximately 0.501844. The other 907 entries were filled with zero. This short-record artifact is a reason to study missingness and tenure before interpreting brokerage rankings. The original scripts excluded Rubio by ID; the first maintained baseline used only the general metadata and minimum-record rules, making the problem visible.
 
-At the author's request, **methodology 1.1.0** excludes Rubio from **Congress 119 only** before computing the graph and all statistics. His Senate membership was legitimate; the exclusion is a documented analytical choice about his very short record. Earlier Congress records remain governed by the usual rules, and the exception does not automatically apply to future Congresses. Other partial-term records still require care. [Methodology](METHODOLOGY.md#a-concrete-short-record-artifact-in-the-initial-snapshot) and the [dated outlier audit](DATA_AUDIT.md) retain the superseded diagnostics. The original thesis and scripts remain unchanged.
+Methodology 1.1.0 temporarily excluded Rubio from Congress 119 by identifier. **Methodology 1.2.0 replaces that exception with the same rule in every Congress: at least 20 usable votes and coverage of 10% of eligible Senate roll calls.** All graphs and statistics are recalculated after filtering. This removes exceptionally short records without selecting people by name, though it does not eliminate missingness effects among retained members. [Methodology](METHODOLOGY.md#a-concrete-short-record-artifact-in-the-initial-snapshot) and the [dated outlier audit](DATA_AUDIT.md) retain the superseded diagnostics. The original thesis and scripts remain unchanged.
+
+### A shared ideological scale is a separate model
+
+The companion's **Ideology** view adds Voteview's published NOMINATE coordinates alongside the thesis's spectral geometry. These are career-static positions in the current export, as described in [Voteview's documentation](https://voteview.com/articles/data_help_members). The timeline changes which members are present; it does not estimate a continuing member's ideological drift. The [methodology notes](METHODOLOGY.md#nominate-common-scale-view) explain the shared scale and its historical interpretation. Network measures still come from the thesis-derived voting-similarity graph.
 
 ### Random walks are an analogy, not observed persuasion
 
@@ -100,12 +104,12 @@ The maintained pipeline adds further implementation and interpretation notes in 
 1. Compare the retained zero-coding convention with pairwise jointly observed votes, including a minimum overlap requirement.
 2. Repeat the analysis across several edge thresholds and minimum participation requirements.
 3. Separate nominations, procedural votes, final passage, and policy categories where metadata allows.
-4. Compare spectral geometry with DW-NOMINATE and cosponsorship networks without treating either as ground truth.
+4. Formally compare spectral geometry with the companion's NOMINATE view and with cosponsorship networks, without treating either as ground truth.
 5. Use rolling windows or matched partial-term samples to compare an in-progress Congress with earlier ones fairly.
 6. Quantify uncertainty and formally test changes over time before using language such as “phase transition” or attributing a change to a particular event.
 7. Archive the raw source snapshot, pipeline version, settings, and environment used for any publication.
 
-These are research extensions, not analyses already performed by the dashboard.
+These are research extensions. The dashboard offers a NOMINATE view and applies one minimum-vote specification; it does not perform these broader comparisons or robustness studies.
 
 ## Citation
 
