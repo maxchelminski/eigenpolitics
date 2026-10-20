@@ -3,7 +3,8 @@
 const $ = (selector) => document.querySelector(selector);
 const SVG_NS = "http://www.w3.org/2000/svg";
 const palette = { 100: "#528bb0", 200: "#cb785b", 328: "#9a9468", 1: "#9c8259", 9: "#70966c", 13: "#70966c", 22: "#b2934f", 29: "#c5a54f", 37: "#9786ad", 46: "#4e9691", 112: "#778aaf", 370: "#979659", 380: "#b6819d" };
-const state = { index: null, data: null, view: "spectral", aligned: true, selected: null, selectedName: "", previousData: null, previousStatus: "none", query: "", threshold: 0.8, request: 0, target: null, compare: false, cache: new Map(), pending: new Map(), generation: 0, axes: null };
+const state = { index: null, data: null, view: "spectral", get aligned() { return this.view === "aligned"; }, zoom: {}, selected: null, selectedName: "", previousData: null, previousStatus: "none", query: "", threshold: 0.8, request: 0, target: null, compare: false, cache: new Map(), pending: new Map(), generation: 0, axes: null };
+let chartSequence = 0;
 const metricInfo = {
   fiedler_value: ["How connected is the chamber?", "Lower λ₂ indicates weaker connectivity in this weighted voting graph.", "Normalized Laplacian · λ₂"],
   sweep_conductance: ["Where does the network separate?", "Lower sweep conductance means a smaller cut relative to the smaller group’s volume.", "Fiedler sweep conductance"],
@@ -226,14 +227,15 @@ function selectMember(node) {
   renderDetail();
   highlightPoints();
 }
+function clearSelection() {
+  state.selected = null; state.selectedName = "";
+  renderDetail(); highlightPoints();
+}
 function appendClearSelection(panel) {
   const clear = html("button", "inline-button clear-selection", "Clear selection");
   clear.id = "clear-selection";
   clear.type = "button";
-  clear.addEventListener("click", () => {
-    state.selected = null; state.selectedName = "";
-    renderDetail(); highlightPoints();
-  });
+  clear.addEventListener("click", clearSelection);
   panel.append(clear);
 }
 function selectedMovement() {
@@ -295,26 +297,139 @@ function renderLegend() {
 }
 function coordinates(data, view) {
   return data.nodes.map(node => ({ node,
-    x: state.aligned ? node.aligned_x : node.x,
-    y: view === "brokerage" ? node.betweenness : state.aligned ? node.aligned_y : node.y }));
+    x: view === "aligned" ? node.aligned_x : node.x,
+    y: view === "brokerage" ? node.betweenness : view === "aligned" ? node.aligned_y : node.y }));
 }
 function boundsFor(view) {
-  return [state.aligned ? state.axes.aligned_x : state.axes.x,
-    view === "brokerage" ? state.axes.betweenness : state.aligned ? state.axes.aligned_y : state.axes.y];
+  return [view === "aligned" ? state.axes.aligned_x : state.axes.x,
+    view === "brokerage" ? state.axes.betweenness : view === "aligned" ? state.axes.aligned_y : state.axes.y];
+}
+function viewportFor(view = state.view) {
+  return state.zoom[view] || { k: 1, x: .5, y: .5 };
+}
+function clampViewport(viewport) {
+  const k = Math.max(1, Math.min(8, viewport.k)), half = .5 / k;
+  const clamp = value => Math.max(half, Math.min(1 - half, value));
+  return { k, x: clamp(viewport.x), y: clamp(viewport.y) };
+}
+function visibleBounds(view) {
+  const { k, x, y } = viewportFor(view);
+  return boundsFor(view).map(([lo, hi], index) => {
+    const center = index === 0 ? x : y, span = hi - lo;
+    return [lo + (center - .5 / k) * span, lo + (center + .5 / k) * span];
+  });
+}
+function renderZoomControls() {
+  const { k } = viewportFor();
+  $("#zoom-level").textContent = `${Math.round(k * 100)}%`;
+  $("#zoom-out").disabled = k <= 1;
+  $("#zoom-in").disabled = k >= 8;
+  $("#zoom-reset").disabled = k <= 1;
+  $("#plot-source").textContent = `${state.aligned ? "Shared-senator alignment" : "Raw eigenvectors"} · ${k > 1 ? "Zoom held across Congresses" : "Fixed axes"}`;
+}
+function repaintScatter() {
+  const svg = $("#main-chart svg");
+  if (!svg || !state.data) return;
+  const hadFocus = svg.contains(document.activeElement);
+  // Keep the SVG root during a gesture so pointer capture and focus survive.
+  const fresh = buildScatter(state.data, { interactive: false });
+  svg.replaceChildren(...fresh.childNodes);
+  for (const [key, value] of Object.entries(fresh.dataset)) svg.dataset[key] = value;
+  if (hadFocus) svg.focus({ preventScroll: true });
+  highlightPoints();
+  renderZoomControls();
+}
+function zoomBy(factor, anchor = { x: .5, y: .5 }) {
+  if (!state.data) return;
+  const old = viewportFor(), k = Math.max(1, Math.min(8, old.k * factor));
+  state.zoom[state.view] = clampViewport({ k,
+    x: old.x + (anchor.x - .5) * (1 / old.k - 1 / k),
+    y: old.y + (anchor.y - .5) * (1 / old.k - 1 / k) });
+  repaintScatter();
+}
+function resetZoom() {
+  if (!state.data) return;
+  delete state.zoom[state.view];
+  repaintScatter();
+}
+function bindScatterNavigation(svg) {
+  let drag = null, suppressClick = false;
+  const position = event => {
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return null;
+    const p = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse()), d = svg.dataset;
+    return { x: (p.x - Number(d.plotLeft)) / (Number(d.plotRight) - Number(d.plotLeft)),
+      y: (Number(d.plotBottom) - p.y) / (Number(d.plotBottom) - Number(d.plotTop)) };
+  };
+  const inside = p => p && p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1;
+  svg.addEventListener("wheel", event => {
+    const p = position(event);
+    if (!inside(p)) return;
+    event.preventDefault();
+    const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 300 : 1);
+    zoomBy(Math.exp(-Math.max(-200, Math.min(200, delta)) * .002), p);
+  }, { passive: false });
+  svg.addEventListener("pointerdown", event => {
+    suppressClick = false;
+    const p = position(event);
+    if (event.button !== 0 || !event.isPrimary || event.target.closest(".point") || !inside(p) || viewportFor().k <= 1) return;
+    event.preventDefault();
+    drag = { id: event.pointerId, p, x: event.clientX, y: event.clientY, viewport: { ...viewportFor() }, moved: false };
+    svg.setPointerCapture(event.pointerId);
+  });
+  svg.addEventListener("pointermove", event => {
+    if (!drag || drag.id !== event.pointerId) return;
+    if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 4 && !drag.moved) return;
+    const p = position(event);
+    if (!p) return;
+    drag.moved = true;
+    svg.classList.add("is-panning");
+    const start = drag.viewport;
+    state.zoom[state.view] = clampViewport({ k: start.k, x: start.x - (p.x - drag.p.x) / start.k, y: start.y - (p.y - drag.p.y) / start.k });
+    repaintScatter();
+  });
+  const finish = event => {
+    if (!drag || drag.id !== event.pointerId) return;
+    suppressClick = event.type === "pointerup" && drag.moved;
+    drag = null;
+    svg.classList.remove("is-panning");
+    if (svg.hasPointerCapture(event.pointerId)) svg.releasePointerCapture(event.pointerId);
+  };
+  svg.addEventListener("pointerup", finish);
+  svg.addEventListener("pointercancel", finish);
+  svg.addEventListener("lostpointercapture", finish);
+  svg.addEventListener("click", event => {
+    if (suppressClick) { suppressClick = false; return; }
+    if (!event.target.closest(".point")) clearSelection();
+  });
+  svg.addEventListener("keydown", event => {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.key === "Escape") clearSelection();
+    else if (event.key === "+" || event.key === "=") zoomBy(1.25);
+    else if (event.key === "-") zoomBy(1 / 1.25);
+    else if (event.key === "0") resetZoom();
+    else return;
+    event.preventDefault();
+  });
 }
 function matches(node) {
   return !state.query || `${node.name} ${prettyName(node.name)} ${node.state} ${node.party}`.toLowerCase().includes(state.query);
 }
-function buildScatter(data, { compact = false, view = state.view, sharedBounds = null } = {}) {
+function buildScatter(data, { compact = false, view = state.view, sharedBounds = null, interactive = true } = {}) {
   const mobile = window.innerWidth < 760;
   const width = compact ? 560 : (mobile ? 400 : 860), height = compact ? 280 : (mobile ? 315 : 355);
   const margin = { left: compact ? 50 : 58, right: 24, top: 25, bottom: 51 };
   const points = coordinates(data, view);
-  const [xb, yb] = sharedBounds || boundsFor(view);
+  const [xb, yb] = sharedBounds || (compact ? boundsFor(view) : visibleBounds(view));
   const sx = (v) => margin.left + (v - xb[0]) / (xb[1] - xb[0]) * (width - margin.left - margin.right);
   const sy = (v) => height - margin.bottom - (v - yb[0]) / (yb[1] - yb[0]) * (height - margin.top - margin.bottom);
-  const svg = el("svg", { viewBox: `0 0 ${width} ${height}`, role: "group", "aria-label": `${ordinal(data.congress)} Senate ${view} chart. Use Tab to explore senators.`, "data-aligned": state.aligned, "data-x-min": xb[0], "data-x-max": xb[1], "data-y-min": yb[0], "data-y-max": yb[1], "data-plot-left": margin.left, "data-plot-right": width - margin.right, "data-plot-top": margin.top, "data-plot-bottom": height - margin.bottom });
-  svg.append(el("title", {}, `${ordinal(data.congress)} Senate: ${state.aligned ? "aligned" : "raw"} spectral ${view === "brokerage" ? "coordinate versus betweenness" : "embedding"}`));
+  const aligned = view === "aligned";
+  const svg = el("svg", { viewBox: `0 0 ${width} ${height}`, role: "group", tabindex: compact ? -1 : 0, "aria-label": `${ordinal(data.congress)} Senate ${view} chart. Use Tab to explore senators. Plus and minus zoom, 0 resets, Escape clears selection.`, "data-aligned": aligned, "data-zoom": compact ? 1 : viewportFor(view).k, "data-x-min": xb[0], "data-x-max": xb[1], "data-y-min": yb[0], "data-y-max": yb[1], "data-plot-left": margin.left, "data-plot-right": width - margin.right, "data-plot-top": margin.top, "data-plot-bottom": height - margin.bottom });
+  svg.append(el("title", {}, `${ordinal(data.congress)} Senate: ${aligned ? "aligned" : "raw"} spectral ${view === "brokerage" ? "coordinate versus betweenness" : "embedding"}`));
+  const clipID = `plot-clip-${++chartSequence}`, defs = el("defs"), clip = el("clipPath", { id: clipID });
+  const plotRect = { x: margin.left, y: margin.top, width: width - margin.left - margin.right, height: height - margin.top - margin.bottom };
+  clip.append(el("rect", plotRect)); defs.append(clip); svg.append(defs);
+  svg.append(el("rect", { ...plotRect, class: "plot-hit-area", fill: "transparent" }));
   for (let i = 0; i <= 4; i++) {
     const x = xb[0] + i * (xb[1] - xb[0]) / 4, y = yb[0] + i * (yb[1] - yb[0]) / 4;
     svg.append(el("line", { x1: sx(x), x2: sx(x), y1: margin.top, y2: height - margin.bottom, class: "chart-grid" }));
@@ -322,25 +437,28 @@ function buildScatter(data, { compact = false, view = state.view, sharedBounds =
     svg.append(el("text", { x: sx(x), y: height - margin.bottom + 19, "text-anchor": "middle", class: "chart-tick" }, format(x, 2)));
     svg.append(el("text", { x: margin.left - 10, y: sy(y) + 4, "text-anchor": "end", class: "chart-tick" }, format(y, view === "brokerage" ? 3 : 2)));
   }
-  svg.append(el("line", { x1: sx(0), x2: sx(0), y1: margin.top, y2: height - margin.bottom, class: "chart-zero" }));
-  svg.append(el("line", { x1: margin.left, x2: width - margin.right, y1: sy(0), y2: sy(0), class: "chart-zero" }));
-  svg.append(el("text", { x: (width + margin.left) / 2, y: height - 6, "text-anchor": "middle", class: "chart-label" }, state.aligned ? "Aligned spectral axis 1" : "Fiedler coordinate · v₂"));
-  svg.append(el("text", { transform: `translate(13,${(height - margin.bottom) / 2}) rotate(-90)`, "text-anchor": "middle", class: "chart-label" }, view === "brokerage" ? "Betweenness centrality" : state.aligned ? "Aligned spectral axis 2" : "Secondary coordinate · v₃"));
+  svg.append(el("text", { x: (width + margin.left) / 2, y: height - 6, "text-anchor": "middle", class: "chart-label" }, aligned ? "Aligned spectral axis 1" : "Fiedler coordinate · v₂"));
+  svg.append(el("text", { transform: `translate(13,${(height - margin.bottom) / 2}) rotate(-90)`, "text-anchor": "middle", class: "chart-label" }, view === "brokerage" ? "Betweenness centrality" : aligned ? "Aligned spectral axis 2" : "Secondary coordinate · v₃"));
+  const plot = el("g", { class: "plot-content", "clip-path": `url(#${clipID})` });
+  svg.append(plot);
+  plot.append(el("line", { x1: sx(0), x2: sx(0), y1: margin.top, y2: height - margin.bottom, class: "chart-zero" }));
+  plot.append(el("line", { x1: margin.left, x2: width - margin.right, y1: sy(0), y2: sy(0), class: "chart-zero" }));
   if (view === "network") {
     const byID = new Map(points.map((p) => [String(p.node.id), p]));
     const edges = (data.edges || []).filter((edge) => edge.weight >= state.threshold);
     edges.forEach((edge) => {
       const source = byID.get(String(edge.source)), target = byID.get(String(edge.target));
       if (!source || !target) return;
-      svg.append(el("line", { x1: sx(source.x), y1: sy(source.y), x2: sx(target.x), y2: sy(target.y), stroke: "#688774", "stroke-width": 0.65, opacity: state.query ? 0.04 : Math.max(0.035, 0.18 - edges.length / 40000) }));
+      plot.append(el("line", { x1: sx(source.x), y1: sy(source.y), x2: sx(target.x), y2: sy(target.y), stroke: "#688774", "stroke-width": 0.65, opacity: state.query ? 0.04 : Math.max(0.035, 0.18 - edges.length / 40000) }));
     });
     if (!compact) $("#edge-count").textContent = `${number(edges.length)} visible ties`;
   }
   points.forEach(({ node, x, y }) => {
     const isSelected = !compact && String(state.selected) === String(node.id);
-    const description = state.aligned ? `Aligned axes: ${format(node.aligned_x, 4)}, ${format(node.aligned_y, 4)} · Brokerage: ${format(node.betweenness, 4)}` :
+    const inFrame = x >= xb[0] && x <= xb[1] && y >= yb[0] && y <= yb[1];
+    const description = aligned ? `Aligned axes: ${format(node.aligned_x, 4)}, ${format(node.aligned_y, 4)} · Brokerage: ${format(node.betweenness, 4)}` :
       `Fiedler: ${format(node.x, 4)} · Brokerage: ${format(node.betweenness, 4)}`;
-    const circle = el("circle", { cx: sx(x), cy: sy(y), r: compact ? 3.5 : (mobile ? 3.8 : 4.4), fill: partyColor(node), class: `point${!compact && !matches(node) ? " dim" : ""}${isSelected ? " selected" : ""}`, tabindex: compact ? -1 : 0, role: "button", "aria-label": `${prettyName(node.name)}, ${node.party}, ${node.state}. ${description}` });
+    const circle = el("circle", { cx: sx(x), cy: sy(y), r: compact ? 3.5 : (mobile ? 3.8 : 4.4), fill: partyColor(node), class: `point${!compact && !matches(node) ? " dim" : ""}${isSelected ? " selected" : ""}`, tabindex: compact || !inFrame ? -1 : 0, "aria-hidden": String(!inFrame), role: "button", "aria-label": `${prettyName(node.name)}, ${node.party}, ${node.state}. ${description}` });
     circle.append(el("title", {}, `${prettyName(node.name)} · ${node.party} · ${node.state}\n${description}`));
     if (!compact) {
       const activate = () => selectMember(node);
@@ -349,8 +467,9 @@ function buildScatter(data, { compact = false, view = state.view, sharedBounds =
       circle.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); activate(); } });
       circle.addEventListener("focus", activate);
     }
-    svg.append(circle);
+    plot.append(circle);
   });
+  if (!compact && interactive) bindScatterNavigation(svg);
   return svg;
 }
 function highlightPoints() {
@@ -362,7 +481,7 @@ function highlightPoints() {
     const x = Number(selected.getAttribute("cx")), y = Number(selected.getAttribute("cy"));
     const label = el("text", { x: x + 9, y: y - 11, class: "point-label", "pointer-events": "none" }, prettyName(node.name));
     if (x > svg.viewBox.baseVal.width * .62) { label.setAttribute("x", x - 9); label.setAttribute("text-anchor", "end"); }
-    svg.append(label);
+    svg.querySelector(".plot-content").append(label);
   }
   $("#outlier-list").querySelectorAll(".outlier-button").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.id === String(state.selected))));
   renderMemberTrail();
@@ -381,12 +500,13 @@ function renderMemberTrail() {
     x2: sx(movement.node.aligned_x), y2: sy(movement.node.aligned_y) }));
   trail.append(el("circle", { class: "trail-start", cx: sx(movement.before.aligned_x), cy: sy(movement.before.aligned_y), r: 6 }));
   trail.append(el("title", {}, `${prettyName(movement.node.name)}: hollow marker shows ${ordinal(movement.congress)} Congress; filled point shows ${ordinal(state.data.congress)}.`));
-  svg.insertBefore(trail, svg.querySelector(".point"));
+  svg.querySelector(".plot-content").insertBefore(trail, svg.querySelector(".point"));
 }
 function renderChart() {
   if (!state.data) return;
   const config = {
-    spectral: [state.aligned ? "ALIGNED SPECTRAL EMBEDDING" : "RAW SPECTRAL EMBEDDING", "Two dimensions of division", state.aligned ? "Shared senators align each Congress with the previous one. Select a senator, then move the timeline to follow their position." : "Each point is a senator. Nearby positions reflect similar patterns in the weighted voting network.", ""],
+    spectral: ["SPECTRAL GEOMETRY", "Two dimensions of division", "Each point is a senator. Nearby positions reflect similar patterns in the weighted voting network.", ""],
+    aligned: ["ALIGNED SPECTRAL EMBEDDING", "Following the same senators", "Shared senators align each Congress with the previous one. Select a senator, then move the timeline to follow their position.", ""],
     network: ["WEIGHTED VOTING NETWORK", "The ties between votes", "Lines connect senators whose transformed voting correlation meets the display threshold. Positions use the same spectral embedding as the geometry view.", "This slider changes the visible ties only. Spectral metrics use the full weighted graph; brokerage uses a separate 0.5 edge threshold."],
     brokerage: ["STRUCTURAL BROKERAGE", "Who lies on the paths?", "Height shows weighted shortest-path betweenness on a graph retaining ties of at least 0.5. Higher values identify more frequent intermediaries in this model.", "Short service can produce misleadingly high brokerage: missing and nonservice votes are coded zero. Check each member’s record coverage before interpreting a high score."],
   }[state.view];
@@ -397,7 +517,7 @@ function renderChart() {
   $("#interpretation-text").parentElement.hidden = !config[3];
   $("#network-controls").hidden = state.view !== "network";
   $("#main-chart").replaceChildren(buildScatter(state.data));
-  $("#plot-source").textContent = state.aligned ? "Shared-senator alignment · Fixed axes" : "Raw eigenvectors · Fixed axes";
+  renderZoomControls();
   renderAlignmentInfo();
   renderLegend();
   renderDetail();
@@ -603,10 +723,9 @@ async function init() {
     renderSnapshot();
     const params = new URLSearchParams(location.search);
     const requested = Number(params.get("congress"));
-    if (["spectral", "network", "brokerage"].includes(params.get("view"))) state.view = params.get("view");
+    if (["spectral", "aligned", "network", "brokerage"].includes(params.get("view"))) state.view = params.get("view");
     else if (params.has("view")) { const url = new URL(location.href); url.searchParams.set("view", "spectral"); history.replaceState(null, "", url); }
-    state.aligned = params.get("align") !== "raw";
-    $("#align-spectra").checked = state.aligned;
+    if (params.has("align")) { const url = new URL(location.href); url.searchParams.delete("align"); history.replaceState(null, "", url); }
     document.querySelectorAll("[data-view]").forEach(item => item.setAttribute("aria-pressed", String(item.dataset.view === state.view)));
     const initial = index.congresses.some((d) => d.congress === requested) ? requested : index.congresses.at(-1).congress;
     await selectCongress(initial, false);
@@ -624,13 +743,10 @@ $("#congress-slider").addEventListener("input", event => {
 });
 $("#congress-prev").addEventListener("click", () => stepCongress(-1));
 $("#congress-next").addEventListener("click", () => stepCongress(1));
-$("#align-spectra").addEventListener("change", event => {
-  state.aligned = event.target.checked;
-  const url = new URL(location.href);
-  if (state.aligned) url.searchParams.delete("align"); else url.searchParams.set("align", "raw");
-  history.replaceState(null, "", url);
-  renderChart(); renderComparison();
-});
+$("#zoom-in").addEventListener("click", () => zoomBy(1.25));
+$("#zoom-out").addEventListener("click", () => zoomBy(1 / 1.25));
+$("#zoom-reset").addEventListener("click", resetZoom);
+$("#main-chart").addEventListener("click", event => { if (event.target === event.currentTarget && state.data) clearSelection(); });
 document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => {
   state.view = button.dataset.view;
   const url = new URL(location.href);

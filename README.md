@@ -24,13 +24,16 @@ This repository brings together the original thesis and analysis scripts, an int
 | View | Research question |
 | --- | --- |
 | Historical comparison | How has the Senate's spectral connectivity changed across Congresses? |
+| Geometry | Which senators occupy similar positions in the original spectral map? |
 | Aligned spectral map | How do senators' positions in the voting network change relative to continuing colleagues? |
 | Network and brokerage views | Which strong voting ties and shortest-path bridge positions appear in the graph? |
 | Congress detail | What do the eigenvalues and network statistics reveal about a selected Senate? |
 | Member inspection | Where does a particular senator sit in that Congress's structure? |
 | Source and method notes | What was downloaded, when was it retrieved, and how were the results computed? |
 
-Drag the timeline beneath the chamber plot, select one of its Congress points, or use the arrow keys to move through all 119 Senates. The plot updates on input, with fixed axes across Congresses. **Align shared senators** is enabled by default: continuing members link each Congress's spectral map to the previous one. Select a senator and move the timeline to follow their position; turn alignment off to inspect the original eigenvector coordinates.
+Drag the timeline beneath the chamber plot, select one of its Congress points, or use the arrow keys to move through all 119 Senates. **Geometry** opens by default with the original eigenvector coordinates. The separate **Aligned** tab links each Congress's spectral map to the previous one through continuing senators. Network and Brokerage also retain the original coordinates. Select a senator and move the timeline to follow their eligible records; click empty plot space to clear the selection.
+
+Zoom with the **+ / −** buttons or scroll over the plot, then drag to pan. Each view keeps its viewport as you change Congress, with zoom from **100% to 800%**. **Reset** restores the fixed global axes. The comparison charts retain the global frame.
 
 Methodology **1.3.0** retains the same minimum record rule in every Congress: a senator needs **at least 20 usable votes and coverage of at least 10% of the eligible Senate roll calls**. The cutoff is calculated before filtering members. No one is excluded by name or identifier. The rule runs before calculating the graph, so every coordinate and statistic reflects the retained population.
 

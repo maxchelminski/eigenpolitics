@@ -135,13 +135,15 @@ npm run test:browser
 npm run screenshots
 ```
 
-These checks exercise live timeline input, clickable Congress points, keyboard navigation, fixed axes, raw and aligned spectral modes, rapid-selection races, failure rollback, minimum-vote exclusions, search, comparison, downloads, and narrow layouts. The screenshots command replaces the application screenshots under `docs/images/` with real captures of the current snapshot.
+These checks exercise live timeline input, clickable Congress points, keyboard navigation, the separate Geometry and Aligned tabs, fixed global frames, zoom and pan, selection clearing, rapid-selection races, failure rollback, minimum-vote exclusions, search, comparison, downloads, and narrow layouts. The screenshots command replaces the application screenshots under `docs/images/` with real captures of the current snapshot.
 
 The slider indexes the available manifest entries, so gaps in historical data do not create invalid selections. Requests carry a selection counter: only the latest selection can replace the chart, and a failed latest request restores the last displayed Congress. In-flight loads are shared and scoped to the manifest generation. Plot bounds are calculated during publication from all retained snapshots, so the browser does not download every Congress merely to establish a fixed plotting frame.
 
-Shared-senator alignment is enabled by default. Its rigid transformations are calculated in the pipeline, leaving the original node coordinates and graph statistics intact. The UI selects which coordinates to display; switching the control never refits the model in the browser. A missing adjacent Congress or a degenerate overlap starts a new segment, so member trails must not connect separate segments. See [Methodology](METHODOLOGY.md#alignment-through-shared-senators) for the fitting rule and interpretation.
+Geometry is the default tab and displays the original eigenvector coordinates. The separate Aligned tab uses the rigid transformations calculated in the pipeline, leaving the original node coordinates and graph statistics intact. Network and Brokerage also use the original coordinates. Switching tabs never refits the model in the browser. A missing adjacent Congress or a degenerate overlap starts a new segment, so member trails in Aligned must not connect separate segments. See [Methodology](METHODOLOGY.md#alignment-through-shared-senators) for the fitting rule and interpretation.
 
 Generated node `x`/`y` fields remain raw; `aligned_x`/`aligned_y` contain the linked coordinates. Each Congress's `alignment` object stores its segment, reference, anchors, transform, and fit diagnostics. The manifest's `axis_bounds` and `aligned_axis_bounds` provide fixed frames for raw and aligned modes respectively. Publication always reruns alignment from raw coordinates for the complete available history, even after a partial source refresh.
+
+All four main-chart views support zoom from 1× to 8× with the toolbar or mouse wheel, plus dragging to pan. Each view retains its own viewport across Congress changes; Reset returns it to the manifest's global bounds. Comparison charts stay at the global bounds. Plot contents are clipped to the drawing rectangle. A click on empty plot space clears the tracked senator; dragging to pan must not clear the selection.
 
 To use an installed Edge browser on Windows instead of downloading Chromium:
 
