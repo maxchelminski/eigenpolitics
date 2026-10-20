@@ -1,10 +1,10 @@
 # 119th Congress outlier audit
 
-> **Current analysis:** Methodology **1.2.0** requires at least **20 usable votes and 10% coverage** in every Congress. The denominator is fixed from eligible state senators' usable roll calls before member filtering. This replaces methodology 1.1.0's Rubio-specific exception; there are no exclusions by name or identifier. After the current-population summary, the original diagnostic sections deliberately preserve the **superseded 1.0.0 baseline**, including Rubio's original point; those coordinates and membership do not describe the current dashboard. See [Methodology](METHODOLOGY.md#from-roll-calls-to-a-matrix) for the active rule.
+> **Current analysis:** Methodology **1.3.0** retains the requirement of at least **20 usable votes and 10% coverage** in every Congress and adds shared-senator spectral alignment. The denominator is fixed from eligible state senators' usable roll calls before member filtering. There are no exclusions by name or identifier. Alignment changes the displayed reference frame without changing membership or graph statistics. After the current-population summary, the original diagnostic sections deliberately preserve the **superseded 1.0.0 baseline**, including Rubio's original point; those coordinates and membership do not describe the current dashboard. See [Methodology](METHODOLOGY.md#from-roll-calls-to-a-matrix) for the active rule.
 
 ## Current population rule
 
-Applying methodology 1.2.0 to the same October 20, 2026 source files gives **915 eligible roll calls**, a minimum of **92 usable votes**, and **101 retained members**. This count covers service throughout the Congress, rather than 101 occupied seats.
+Applying the common population rule, introduced in methodology 1.2.0 and retained in 1.3.0, to the same October 20, 2026 source files gives **915 eligible roll calls**, a minimum of **92 usable votes**, and **101 retained members**. This count covers service throughout the Congress, rather than 101 occupied seats.
 
 | Short record | Usable votes | Result under the common rule |
 | --- | ---: | --- |
@@ -16,6 +16,14 @@ Applying methodology 1.2.0 to the same October 20, 2026 source files gives **915
 Trump's presidential record remains ineligible on office metadata. Rubio's earlier Senate records are evaluated under the same rule as every other member's; there is no permanent or Congress-specific blacklist. Armstrong's retained partial-term record illustrates the limit of this threshold: it filters the shortest records without eliminating all tenure-related effects. The [current JSON](../site/data/congresses/119.json) records exact exclusions and settings and may change after a source refresh.
 
 Across the cached history, the rule removes **253 previously plotted member-Congress records in 89 Congresses** relative to methodology 1.1.0. These are records, not necessarily 253 distinct people. All 119 Congresses retain enough data for the analysis; the smallest retained population is 26 in Congress 1. This population audit establishes the filter's effect, not statistical robustness to other thresholds.
+
+## Shared-senator alignment audit
+
+The methodology **1.3.0** rebuild of the same cached source files aligns all **118 adjacent links** across the 119 Congresses, with no segment resets. The first Congress establishes the frame. The smallest overlap is **17 retained senators**, on the links into Congresses 3 and 7. Comparing the raw numerical outputs before and after this update confirms that membership, raw spectral coordinates, and graph statistics are unchanged; only aligned coordinates and their diagnostics are added.
+
+The link from Congress 118 to 119 uses **86 shared senators**. Their root mean squared separation falls from **0.186453** in the original frames to **0.105977** after rigid alignment. Its relative residual is **0.771975**, or about 77% of the previous anchors' root mean squared radius. The large reduction removes differences in orientation and origin, but does not establish a precise fit.
+
+Under the documented `relative_residual > 0.5` heuristic, **82 of 118 links are flagged weak**, including 118–119. Those links remain aligned and their diagnostics are published. This is a material limitation for long historical trajectories: much of the continuing members' geometry changes in ways a rotation, reflection, and translation cannot absorb. Alignment supplies a reproducible relative frame; it does not establish fixed ideological meaning across the whole history. The [methodology](METHODOLOGY.md#alignment-through-shared-senators) defines the fit, fields, and interpretation.
 
 ## Original diagnostic snapshot
 
@@ -49,7 +57,7 @@ No invalid office or invented identity was found among the named plotted points 
 - **Donald Trump (ID 99912) is absent from the plotted graph.** The raw votes file has 145 Senate-labelled records for this identifier, but the members file identifies him as `chamber = President`, `state_icpsr = 99`, and `state_abbrev = USA`. The maintained pipeline's member-metadata eligibility check excludes him. Filtering only the votes file's chamber would incorrectly admit these records.
 - **J. D. Vance (ID 42304) is also absent from the plotted graph.** His Ohio Senate record has one usable vote, on January 9, 2025, and the original maintained pipeline excludes records with fewer than two usable votes. The [Senate's Ohio service history](https://www.senate.gov/states/OH/senators.htm) records his resignation on January 10, 2025. His brief Senate service in the 119th Congress is legitimate; it does not supply a meaningful full-Congress voting profile.
 
-The preserved thesis scripts exclude IDs `42304`, `41102`, and `99912` explicitly. The maintained methodology 1.0.0 instead used chamber/state metadata and a two-vote computational minimum. Methodology 1.1.0 temporarily added a Congress-119-only Rubio exception. The current 1.2.0 specification replaces both the two-vote minimum and the named exception with a universal threshold. The original files remain unchanged.
+The preserved thesis scripts exclude IDs `42304`, `41102`, and `99912` explicitly. The maintained methodology 1.0.0 instead used chamber/state metadata and a two-vote computational minimum. Methodology 1.1.0 temporarily added a Congress-119-only Rubio exception. Methodology 1.2.0 replaced both the two-vote minimum and the named exception with the universal threshold retained in 1.3.0. The original files remain unchanged.
 
 ## Diagnostic: observed votes versus zero-filled tenure
 

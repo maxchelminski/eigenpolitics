@@ -78,9 +78,11 @@ The first maintained snapshot exposed a consequential limitation inherited from 
 
 Methodology 1.1.0 temporarily excluded Rubio from Congress 119 by identifier. **Methodology 1.2.0 replaces that exception with the same rule in every Congress: at least 20 usable votes and coverage of 10% of eligible Senate roll calls.** All graphs and statistics are recalculated after filtering. This removes exceptionally short records without selecting people by name, though it does not eliminate missingness effects among retained members. [Methodology](METHODOLOGY.md#a-concrete-short-record-artifact-in-the-initial-snapshot) and the [dated outlier audit](DATA_AUDIT.md) retain the superseded diagnostics. The original thesis and scripts remain unchanged.
 
-### A shared ideological scale is a separate model
+### Following the thesis's spectral geometry over time
 
-The companion's **Ideology** view adds Voteview's published NOMINATE coordinates alongside the thesis's spectral geometry. These are career-static positions in the current export, as described in [Voteview's documentation](https://voteview.com/articles/data_help_members). The timeline changes which members are present; it does not estimate a continuing member's ideological drift. The [methodology notes](METHODOLOGY.md#nominate-common-scale-view) explain the shared scale and its historical interpretation. Network measures still come from the thesis-derived voting-similarity graph.
+Methodology **1.3.0** aligns adjacent Congresses through the senators who served in both, using their positions in the thesis-derived spectral maps. The fit rotates or reflects and translates each new map without rescaling it. This preserves within-Congress distances and every graph statistic while allowing continuing senators to move relative to one another. The raw eigenvectors remain available alongside the aligned display.
+
+The anchors define a relative reference frame; their aggregate shift is removed by construction. A continuing senator's displayed movement describes a change in structural position relative to colleagues, rather than an absolute policy shift. Aligned axes mix the two raw spectral dimensions and are not themselves individual eigenvectors. The [alignment methodology](METHODOLOGY.md#alignment-through-shared-senators) specifies these assumptions, diagnostic fields, and the handling of gaps or insufficient overlap.
 
 ### Random walks are an analogy, not observed persuasion
 
@@ -104,12 +106,12 @@ The maintained pipeline adds further implementation and interpretation notes in 
 1. Compare the retained zero-coding convention with pairwise jointly observed votes, including a minimum overlap requirement.
 2. Repeat the analysis across several edge thresholds and minimum participation requirements.
 3. Separate nominations, procedural votes, final passage, and policy categories where metadata allows.
-4. Formally compare spectral geometry with the companion's NOMINATE view and with cosponsorship networks, without treating either as ground truth.
+4. Check shared-senator alignment against alternative anchor choices and compare voting-network structure with cosponsorship networks.
 5. Use rolling windows or matched partial-term samples to compare an in-progress Congress with earlier ones fairly.
 6. Quantify uncertainty and formally test changes over time before using language such as “phase transition” or attributing a change to a particular event.
 7. Archive the raw source snapshot, pipeline version, settings, and environment used for any publication.
 
-These are research extensions. The dashboard offers a NOMINATE view and applies one minimum-vote specification; it does not perform these broader comparisons or robustness studies.
+These are research extensions. The dashboard applies one minimum-vote specification and a documented shared-senator alignment; it does not perform these broader comparisons or robustness studies.
 
 ## Citation
 

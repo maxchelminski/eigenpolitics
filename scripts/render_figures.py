@@ -98,43 +98,43 @@ def history(index: dict, latest: dict, output: Path, svg: bool) -> None:
     finish(figure, output, "spectral-history", svg)
 
 
-def comparison(left: dict, right: dict, output: Path, svg: bool) -> None:
+def comparison(left: dict, right: dict, output: Path, svg: bool, bounds: dict) -> None:
     figure, axes = plt.subplots(1, 2, figsize=(14, 8.6), sharex=True, sharey=True)
     figure.subplots_adjust(left=.085, right=.965, top=.74, bottom=.29, wspace=.14)
-    figure.text(.085, .935, "E I G E N P O L I T I C S   /   S P E C T R A L  G E O M E T R Y",
+    figure.text(.085, .935, "E I G E N P O L I T I C S   /   A L I G N E D  S P E C T R A L  G E O M E T R Y",
                 fontsize=10, weight="bold", color=MUTED)
-    figure.text(.085, .875, "Two Senates, two voting geometries", fontsize=28, fontfamily="DejaVu Serif")
+    figure.text(.085, .875, "Two Senates, one aligned spectral frame", fontsize=26, fontfamily="DejaVu Serif")
     figure.text(.085, .83, "Each dot represents one included senator. Color identifies recorded party affiliation.",
                 fontsize=12, color=MUTED)
-    all_nodes = left["nodes"] + right["nodes"]
-    xs = np.array([node["x"] for node in all_nodes])
-    ys = np.array([node["y"] for node in all_nodes])
-    xspan, yspan = np.ptp(xs), np.ptp(ys)
-    xlim = (xs.min() - .14*xspan, xs.max() + .14*xspan)
-    ylim = (ys.min() - .18*yspan, ys.max() + .18*yspan)
+    xlim, ylim = bounds["x"], bounds["y"]
     for axis, detail in zip(axes, (left, right)):
         axis.axhline(0, color=GRID, linewidth=1)
         axis.axvline(0, color=GRID, linewidth=1)
         for node in detail["nodes"]:
             color = DEMOCRATIC if node["party_code"] == 100 else REPUBLICAN if node["party_code"] == 200 else OTHER
-            axis.scatter(node["x"], node["y"], s=43, color=color, alpha=.8, edgecolor=PAPER, linewidth=.6, zorder=3)
+            axis.scatter(node["aligned_x"], node["aligned_y"], s=43, color=color, alpha=.8, edgecolor=PAPER, linewidth=.6, zorder=3)
         axis.set_title(f"{detail['congress']}th Congress  ·  {detail['start_year']}–{detail['end_year']}",
                        loc="left", pad=28, fontsize=15, fontfamily="DejaVu Serif")
         axis.text(0, 1.025, f"{detail['members']} senators  /  {detail['rollcalls']:,} roll calls"
                   f"  /  λ₂ {detail['fiedler_value']:.3f}", transform=axis.transAxes, fontsize=10, color=MUTED)
         axis.set_xlim(*xlim)
         axis.set_ylim(*ylim)
-        axis.set_xlabel("Second eigenvector coordinate", labelpad=10)
+        axis.set_xlabel("Aligned spectral axis 1", labelpad=10)
         axis.tick_params(length=0, pad=7, labelsize=9)
         axis.grid(color=GRID, linewidth=.5, alpha=.55)
-    axes[0].set_ylabel("Third eigenvector coordinate", labelpad=10)
+    axes[0].set_ylabel("Aligned spectral axis 2", labelpad=10)
     handles = [Line2D([], [], color=color, marker="o", linestyle="none", markersize=7, label=label)
                for color, label in [(DEMOCRATIC, "Democratic"), (REPUBLICAN, "Republican"), (OTHER, "Other / Independent")]]
     figure.legend(handles=handles, loc="lower left", bbox_to_anchor=(.079, .188),
                   ncol=3, frameon=False, fontsize=10, columnspacing=2)
-    figure.text(.085, .145, "READ WITH CARE  Shared plotting scale; eigenvectors are estimated separately for each Congress, "
-                "not a common ideology scale.\nELIGIBILITY  At least 20 usable votes and 10% of usable Senate roll calls."
-                " Missingness can still affect the graph.",
+    linked = left["alignment"]["segment_id"] == right["alignment"]["segment_id"]
+    alignment_note = ("Shared senators link consecutive Congresses by rigid Procrustes; no rescaling."
+                      if linked else "These Congresses are in separate alignment segments; coordinates are not linked.")
+    quality = right["alignment"]
+    fit_note = (f"Latest link: {quality['anchor_count']} anchors; relative residual {quality['relative_residual']:.3f}"
+                f" ({quality['quality']})." if quality["relative_residual"] is not None else quality["reason"])
+    figure.text(.085, .145, f"ALIGNMENT  {alignment_note}\n"
+                f"Relative structure, not absolute policy movement. {fit_note}",
                 fontsize=9.3, color=INK, linespacing=1.7)
     figure.text(.085, .065, "SOURCE  Voteview · voteview.com/data"
                 f"  |  Fetched {refresh_date(right)}  |  Latest recorded vote {right['last_vote_date']}"
@@ -157,7 +157,7 @@ def main() -> None:
     latest = read_json(args.data_dir / index["congresses"][-1]["data_file"])
     history(index, latest, args.output, args.svg)
     selected = [read_json(args.data_dir / "congresses" / f"{number}.json") for number in args.compare]
-    comparison(*selected, args.output, args.svg)
+    comparison(*selected, args.output, args.svg, index["aligned_axis_bounds"])
 
 
 if __name__ == "__main__":

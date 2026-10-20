@@ -19,7 +19,6 @@ from scipy.linalg import eigh
 from scipy.sparse.csgraph import connected_components, laplacian
 
 from . import METHODOLOGY_VERSION
-from .ideology import nominate_fields, nominate_provenance
 
 EDGE_THRESHOLD = 0.5
 DISTANCE_EPSILON = 1e-6
@@ -273,7 +272,6 @@ def analyze_congress(votes: pd.DataFrame, members: pd.DataFrame, rollcalls: pd.D
             "id": identifier, "name": str(metadata.loc[identifier, "bioname"]),
             "party": PARTIES.get(int(parties[i]), f"Other ({parties[i]})"),
             "party_code": int(parties[i]), "state": str(metadata.loc[identifier, "state_abbrev"]),
-            **nominate_fields(metadata.loc[identifier]),
             "x": float(x[i]), "y": float(y[i]), "betweenness": float(centrality[i]),
             "votes_cast": int((matrix.iloc[i] != 0).sum()),
             "participation_rate": float((matrix.iloc[i] != 0).mean()),
@@ -300,5 +298,4 @@ def analyze_congress(votes: pd.DataFrame, members: pd.DataFrame, rollcalls: pd.D
             },
         },
     }
-    result["provenance"]["ideology"] = nominate_provenance(result["nodes"])
     return result

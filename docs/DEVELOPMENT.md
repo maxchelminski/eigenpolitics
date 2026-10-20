@@ -77,7 +77,7 @@ python -m pip install -r requirements.txt
 python scripts/refresh_data.py --congress current --refresh
 ```
 
-The refresh downloads current Voteview inputs, computes the Senate graph and spectral results, writes the selected Congress JSON, and updates the index while retaining other available Congresses. Reload the browser to use the new snapshot. The browser does not poll Voteview; the data timestamp records when the pipeline last retrieved its inputs.
+The refresh downloads current Voteview inputs, computes the selected Senate's graph and spectral results, and recomputes the chronological alignment of all available Congresses from their raw coordinates. Other Congresses retain their graph calculations; a change to an early map can update later aligned positions. Reload the browser to use the new snapshot. The browser does not poll Voteview; the data timestamp records when the pipeline last retrieved its inputs.
 
 See the command's current options:
 
@@ -135,11 +135,13 @@ npm run test:browser
 npm run screenshots
 ```
 
-These checks exercise live timeline input, clickable Congress points, keyboard navigation, fixed axes across all four views, NOMINATE source coordinates and missing scores, rapid-selection races, failure rollback, minimum-vote exclusions, search, comparison, downloads, and narrow layouts. The screenshots command replaces the desktop, mobile, ideology, and network screenshots under `docs/images/` with real captures of the current snapshot.
+These checks exercise live timeline input, clickable Congress points, keyboard navigation, fixed axes, raw and aligned spectral modes, rapid-selection races, failure rollback, minimum-vote exclusions, search, comparison, downloads, and narrow layouts. The screenshots command replaces the application screenshots under `docs/images/` with real captures of the current snapshot.
 
-The slider indexes the available manifest entries, so gaps in historical data do not create invalid selections. Requests carry a selection counter: only the latest selection can replace the chart, and a failed latest request restores the last displayed Congress. In-flight loads are shared and scoped to the manifest generation. `axis_bounds` is calculated during publication from all retained snapshots, so the browser does not download every Congress merely to establish a fixed plotting frame.
+The slider indexes the available manifest entries, so gaps in historical data do not create invalid selections. Requests carry a selection counter: only the latest selection can replace the chart, and a failed latest request restores the last displayed Congress. In-flight loads are shared and scoped to the manifest generation. Plot bounds are calculated during publication from all retained snapshots, so the browser does not download every Congress merely to establish a fixed plotting frame.
 
-Ideology has fixed `[-1, 1]` limits and uses the source `nominate_dim1` and `nominate_dim2` fields. A `view=ideology` URL preserves that mode when reloading. Missing score pairs are omitted only from that plot; the graph analysis and member search retain those senators. See [Methodology](METHODOLOGY.md#nominate-common-scale-view) for source-vintage considerations when refreshing longitudinal data.
+Shared-senator alignment is enabled by default. Its rigid transformations are calculated in the pipeline, leaving the original node coordinates and graph statistics intact. The UI selects which coordinates to display; switching the control never refits the model in the browser. A missing adjacent Congress or a degenerate overlap starts a new segment, so member trails must not connect separate segments. See [Methodology](METHODOLOGY.md#alignment-through-shared-senators) for the fitting rule and interpretation.
+
+Generated node `x`/`y` fields remain raw; `aligned_x`/`aligned_y` contain the linked coordinates. Each Congress's `alignment` object stores its segment, reference, anchors, transform, and fit diagnostics. The manifest's `axis_bounds` and `aligned_axis_bounds` provide fixed frames for raw and aligned modes respectively. Publication always reruns alignment from raw coordinates for the complete available history, even after a partial source refresh.
 
 To use an installed Edge browser on Windows instead of downloading Chromium:
 

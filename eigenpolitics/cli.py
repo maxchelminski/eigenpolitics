@@ -11,6 +11,7 @@ from pathlib import Path
 import sys
 
 from . import METHODOLOGY_VERSION
+from .alignment import align_congresses
 from .analysis import analyze_congress, current_congress
 from .data import atomic_write, fetch_csv, json_bytes, utc_now
 
@@ -30,13 +31,13 @@ def build_congress(congress: int, cache: Path, refresh: bool, offline: bool) -> 
                             {"sources": sources, "generated_at": utc_now()})
 
 
-def axis_bounds(congresses: Iterable[dict]) -> dict[str, list[float]]:
+def axis_bounds(congresses: Iterable[dict], *, aligned: bool = False) -> dict[str, list[float]]:
     """Use the same padded display limits for every published Congress."""
-    maxima = {"x": 0.0, "y": 0.0, "betweenness": 0.0}
+    maxima = {"x": 0.0, "y": 0.0} if aligned else {"x": 0.0, "y": 0.0, "betweenness": 0.0}
     for congress in congresses:
         for node in congress["nodes"]:
             for axis in maxima:
-                value = float(node[axis])
+                value = float(node[f"aligned_{axis}" if aligned else axis])
                 if not math.isfinite(value):
                     raise ValueError(f"Nonfinite {axis} coordinate in Congress {congress['congress']}.")
                 maxima[axis] = max(maxima[axis], abs(value))
@@ -49,8 +50,10 @@ def axis_bounds(congresses: Iterable[dict]) -> dict[str, list[float]]:
 def publish(results: list[dict], output: Path) -> dict:
     """Merge successful analyses after the entire requested build has passed.
 
-    All JSON serializes before any published file is changed. Individual files
-    replace atomically and the index is published last.
+    A refreshed Congress can change every later alignment, so merge the raw
+    analyses and recompute the complete chain before publishing. All JSON
+    serializes before any published file is changed. Individual files replace
+    atomically and the index is published last.
     """
     index_path = output / "index.json"
     existing = {}
@@ -62,7 +65,8 @@ def publish(results: list[dict], output: Path) -> dict:
             if historical - requested:
                 raise ValueError("Methodology/schema changed: rebuild all previously published Congresses.")
         existing = {row["congress"]: row for row in previous.get("congresses", [])}
-    serialized = [(output / result["data_file"], json_bytes(result)) for result in results]
+    if len({result["congress"] for result in results}) != len(results):
+        raise ValueError("Cannot publish duplicate Congress numbers.")
     for result in results:
         existing[result["congress"]] = {key: result[key] for key in SUMMARY_KEYS}
     updated = {result["congress"]: result for result in results}
@@ -74,11 +78,14 @@ def publish(results: list[dict], output: Path) -> dict:
             else:
                 yield json.loads((output / summary["data_file"]).read_text(encoding="utf-8"))
 
+    aligned = align_congresses(published_congresses())
+    serialized = [(output / result["data_file"], json_bytes(result)) for result in aligned]
     index = {
         "schema_version": 1, "generated_at": utc_now(),
         "source": {"name": "Voteview Congressional Roll-Call Votes Database", "url": "https://voteview.com/data"},
         "methodology_version": METHODOLOGY_VERSION,
-        "axis_bounds": axis_bounds(published_congresses()),
+        "axis_bounds": axis_bounds(aligned),
+        "aligned_axis_bounds": axis_bounds(aligned, aligned=True),
         "congresses": [existing[number] for number in sorted(existing)],
     }
     encoded_index = json_bytes(index)

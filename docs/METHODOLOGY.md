@@ -2,7 +2,7 @@
 
 Eigen-Politics models each Senate as a network of similarities between roll-call voting records. The maintained pipeline continues the original thesis while correcting several implementation issues. Its output is descriptive network analysis, not a causal estimate of polarization or a forecast of legislation.
 
-The [thesis guide](THESIS.md) preserves the original study's metadata, reported results, and interpretive context. This document describes the maintained calculation, **methodology 1.2.0**, and explains where it differs.
+The [thesis guide](THESIS.md) preserves the original study's metadata, reported results, and interpretive context. This document describes the maintained calculation, **methodology 1.3.0**, and explains where it differs.
 
 ## Data and unit of analysis
 
@@ -18,7 +18,7 @@ Membership changes mean a graph can include more than 100 senators over a two-ye
 
 The maintained pipeline retains records identified as Senate members in metadata and excludes the executive/non-state records identified by `state_icpsr = 99` or `state_abbrev = USA`. There are no exclusions by name or member identifier.
 
-**Minimum record:** Methodology **1.2.0** requires at least 20 usable yea/nay-coded entries **and** coverage of at least 10% of the Congress's eligible roll calls:
+**Minimum record:** Introduced in methodology **1.2.0** and retained in **1.3.0**, the common rule requires at least 20 usable yea/nay-coded entries **and** coverage of at least 10% of the Congress's eligible roll calls:
 
 ```text
 R = roll calls with at least one usable vote from an eligible state senator
@@ -46,7 +46,7 @@ The meanings of the source fields and cast codes are documented by [Voteview](ht
 
 ### A concrete short-record artifact in the initial snapshot
 
-The superseded **methodology 1.0.0** snapshot of the 119th Congress, generated on **October 20, 2026**, with roll calls through **September 30, 2026**, included 103 members and 915 analyzed roll calls. Marco Rubio's source record contained only eight votes, dated January 9-20, 2025. That matrix filled his other 907 entries with zero. His eight encoded votes represented approximately **0.87% of the full-term matrix columns**, and his computed normalized betweenness was **0.501844**, the largest in that snapshot. These are preserved diagnostic values, not the current 1.2.0 output, in which this record falls below the general threshold.
+The superseded **methodology 1.0.0** snapshot of the 119th Congress, generated on **October 20, 2026**, with roll calls through **September 30, 2026**, included 103 members and 915 analyzed roll calls. Marco Rubio's source record contained only eight votes, dated January 9-20, 2025. That matrix filled his other 907 entries with zero. His eight encoded votes represented approximately **0.87% of the full-term matrix columns**, and his computed normalized betweenness was **0.501844**, the largest in that snapshot. These are preserved diagnostic values, not the current 1.3.0 output, in which this record falls below the general threshold.
 
 This is a concrete warning about the zero-coding model: a short service record can acquire an apparently central position when mostly missing observations are treated numerically as zero. The statistic is not evidence that Rubio was a uniquely influential intermediary across the observed Congress. It should not be used as a substantive ranking without a missingness and tenure sensitivity analysis.
 
@@ -79,29 +79,67 @@ L = I − D^(−1/2) A D^(−1/2)
 
 Its eigenvalues are ordered `0 = λ₁ ≤ λ₂ ≤ … ≤ λₙ ≤ 2`. The second-smallest eigenvalue, λ₂, is called the Fiedler value here. Lower values indicate that a low-conductance partition is possible in this particular weighted graph. Exact disconnection produces additional zero eigenvalues; numerical calculations require a tolerance.
 
-The first and second displayed spectral coordinates are the eigenvectors corresponding to λ₂ and λ₃. They describe low-frequency graph structure. Their signs are arbitrary, so the maintained pipeline chooses a deterministic sign for display and orients the first coordinate toward a higher Republican than Democratic mean when both groups are present. This is a visual convention and does not change λ₂.
+The raw spectral coordinates are the eigenvectors corresponding to λ₂ and λ₃, written `u₂` and `u₃`. They describe low-frequency graph structure. Their signs are arbitrary, so the maintained pipeline chooses a deterministic sign and orients the first raw coordinate toward a higher Republican than Democratic mean when both groups are present. This is a visual convention and does not change λ₂.
 
-Coordinates are not DW-NOMINATE scores, ideological probabilities, or comparable absolute units across Congresses. Close eigenvalues can make individual eigenvectors unstable under small data changes, and an entire eigenspace may rotate. A plot's axes therefore need to be interpreted within the selected Congress. Normalization controls one source of graph-size dependence; it does not make different agendas, memberships, and voting opportunities equivalent.
+Each Congress has its own normalized eigenvectors. Close eigenvalues can make individual eigenvectors unstable under small data changes, and a nearly degenerate eigenspace may rotate. The alignment below supplies a common orientation and origin using continuing senators. It does not turn coordinates into ideological probabilities or absolute policy units. Normalization controls one source of graph-size dependence; it does not make different agendas, memberships, and voting opportunities equivalent.
 
-The timeline keeps the display limits fixed across the published Congresses. The manifest's `axis_bounds` covers all published node coordinates, adds 5% padding, and rounds limits outward to steps of 0.05. Horizontal and spectral vertical limits are symmetric; brokerage starts at zero. Partial refreshes include retained historical snapshots when calculating these bounds. A newly published snapshot can expand the limits, but moving the slider within a snapshot does not rescale them. Comparison charts use those same limits. This is a visual comparison aid, not cross-Congress alignment of the underlying eigenvectors.
+The timeline keeps the display limits fixed across the published Congresses. The manifest stores raw bounds in `axis_bounds` and aligned spectral bounds in `aligned_axis_bounds`. Limits cover the corresponding published coordinates, add 5% padding, and round outward to steps of 0.05; brokerage starts at zero. Partial refreshes include retained historical snapshots when calculating these bounds. A newly published snapshot can expand the limits, but moving the slider within a snapshot does not rescale them.
 
-The [119th Congress outlier audit](DATA_AUDIT.md) verifies prominent names against their source records and official Senate biographies. It also compares correlations computed on jointly observed votes with the superseded 1.0.0 zero-filled baseline. Trump is correctly excluded by his member metadata even though the votes export includes Senate-labelled presidential positions; his exclusion is recorded explicitly in provenance. Fixed display limits do not alter numerical analysis; the 1.2.0 population rule does.
+The [119th Congress outlier audit](DATA_AUDIT.md) verifies prominent names against their source records and official Senate biographies. It also compares correlations computed on jointly observed votes with the superseded 1.0.0 zero-filled baseline. Trump is correctly excluded by his member metadata even though the votes export includes Senate-labelled presidential positions; his exclusion is recorded explicitly in provenance. Fixed display limits and alignment do not alter graph statistics; the minimum-record rule does.
 
 The implementation uses SciPy's symmetric normalized Laplacian. Its treatment of input self-loops is documented in [the SciPy reference](https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.csgraph.laplacian.html).
 
-## NOMINATE common-scale view
+## Alignment through shared senators
 
-The optional **Ideology** view plots the published `nominate_dim1` and `nominate_dim2` fields from the same checksummed Voteview member exports. These coordinates are not rescaled eigenvectors. They provide a separate fitted scale; Voteview itself uses the first dimension for its [historical party-position series](https://voteview.com/articles/party_polarization).
+Methodology **1.3.0** links the thesis's two-dimensional spectral maps using senators retained in both adjacent Congresses. This is a display transformation of the spectral calculation, enabled by default. The raw eigenvectors remain available for inspection and download; no external ideological scores enter the graph, linking procedure, or displayed positions.
 
-The current export's NOMINATE estimates assume a constant career position. The separate Nokken-Poole fields estimate each Congress independently and are not used here. Thus a continuing member normally stays at the same point as the timeline changes. Upstream revisions or separate identifiers for a changed role can alter that pattern. See [Voteview's member-field documentation](https://voteview.com/articles/data_help_members).
+The first Congress in a linked segment provides its reference frame. For the next Congress, match continuing senators by their Voteview member identifier, using every matched senator with equal weight. Let `X` contain those senators' current raw `(u₂, u₃)` coordinates and `Y` their previous aligned coordinates. Subtract each anchor set's centroid and solve:
 
-**Source consistency matters:** The local refresh loop updates the current Congress; it retains cached historical exports. A later Voteview model update can therefore leave a member with different published scores in newer and older source snapshots. That difference must not be read as ideological movement. Before longitudinal research, run `python scripts/refresh_data.py --congress all --refresh` to retrieve every Congress again, then check each output's retrieval dates and source checksums. A complete rebuild using cached files does not synchronize their source versions.
+```text
+Q = argmin ||(X − mean(X)) Q − (Y − mean(Y))||²_F
+    subject to QᵀQ = I
 
-Both display axes stay at `[-1, 1]`, with no recentering or Congress-specific normalization. Only members who pass the common eligibility and minimum-vote rules can appear. A missing score is preserved as `null`, never replaced with zero; the two-dimensional map omits members lacking either coordinate. Their spectral records remain available. `provenance.ideology` records score coverage and references. The optional `nominate_conditional` field preserves provisional-estimation status when supplied; `null` means the source did not establish that status. The network, eigenvalues, conductance, and brokerage calculations continue to use roll-call similarity rather than NOMINATE coordinates.
+t = mean(Y) − mean(X) Q
+aligned current coordinates = raw current coordinates × Q + t
+```
 
-The first dimension is commonly interpreted as economic liberalism–conservatism. The second dimension's issue content changes historically. [Voteview's overview](https://voteview.com/about) describes that changing interpretation; its [legacy methodological guidance](https://legacy.voteview.com/page2a.htm) cautions that comparisons are most defensible within stable two-party periods. Sharing numerical units does not make a policy position in 1790 substantively identical to one in 2026. Nor is unweighted Euclidean distance on this plot a validated measure of ideological distance: the fitted model weights its dimensions.
+This is centered orthogonal Procrustes alignment. `Q` may rotate or reflect the plane; the separate translation `t` restores the previous anchors' centroid. The singular-value solution is described in [SciPy's orthogonal Procrustes reference](https://docs.scipy.org/doc/scipy/reference/generated/scipy.linalg.orthogonal_procrustes.html). There is **no fitted scale factor**: the map is never stretched to fit its predecessor.
 
-The repository displays an existing model rather than fitting a new joint spectral model. Aligning independent eigenvectors by sign, rotation, or shared legislators could make a smoother animation, but it would not by itself identify a common ideological unit. Developing that alternative would require explicit linking assumptions and validation.
+Apply the same transformation to every current senator, including new members, then repeat chronologically. The senators used as anchors are not frozen at their previous locations. Their remaining movements are the residual differences after fitting the shared frame. A selected continuing senator's previous position can therefore be compared with the current position within a linked segment.
+
+### What alignment preserves
+
+A rotation or reflection followed by translation preserves every pairwise Euclidean distance within the two-dimensional map. It leaves the voting matrix, similarity graph, eigenvalues, conductance, and brokerage unchanged. Raw coordinates continue to be the individually estimated eigenvectors.
+
+The aligned horizontal and vertical coordinates generally mix `u₂` and `u₃`, then add a translation. They are consequently labeled **aligned spectral coordinates**, not individual Fiedler eigenvectors. In particular, the conductance sweep continues to use the raw degree-adjusted `u₂`, never the aligned horizontal coordinate. Party colors remain metadata, and party labels do not enter the alignment fit.
+
+### Interpretation and limits
+
+The linking assumption is that continuing senators collectively provide a useful reference for the next Congress. Alignment removes the shared anchors' best-fitting aggregate translation, rotation, and reflection. It can reveal a member's **relative structural movement** in the voting network; it cannot recover a movement shared by the entire anchor group, or establish an absolute left–right policy scale. An apparent move can also reflect a changing agenda, membership, voting opportunities, or missingness.
+
+Equal weighting is an explicit choice, not a claim that every anchor has equal measurement reliability. Members must first pass the same minimum-record rule, but surviving differences in coverage remain. Membership turnover changes the anchor set, and uncertainty can accumulate along a long chain. Early and late Congresses connected through many links should not be treated as equally direct comparisons to neighboring Congresses.
+
+Keeping the scale unchanged preserves each map's geometry, but separately unit-normalized eigenvectors still depend on graph size and structure. A change in distance is therefore not a calibrated policy difference. If the boundary between retained and omitted spectral dimensions is unstable, a two-dimensional rotation cannot recover information that moved outside the plotted subspace.
+
+### Breaks, diagnostics, and refreshes
+
+A missing adjacent Congress, fewer than three shared eligible senators, or rank-deficient anchor geometry starts a new linked segment. Both centered anchor configurations and their cross-covariance must have rank two. A singular value counts toward rank only when it is greater than `10⁻¹⁰` times the largest singular value. The pipeline records why a link could not be established; it does not bridge a gap by assuming an unobserved intermediate transformation. Positions in separate segments do not share an estimated frame.
+
+The Congress JSON preserves raw node `x` and `y` and adds `aligned_x` and `aligned_y`. Its `alignment` object records:
+
+| Fields | Meaning |
+| --- | --- |
+| `status`, `quality`, `reason` | Whether the map establishes a reference, aligns successfully, or starts a new segment, with the reason and any weak-fit flag. |
+| `reference_congress`, `root_congress`, `segment_id` | The adjacent reference attempted and the start of the current linked segment. |
+| `anchor_ids`, `anchor_count` | The shared eligible senators used to link adjacent maps. |
+| `source_rank`, `target_rank`, `cross_rank` | Numerical ranks used to check that the anchor geometry identifies a two-dimensional fit. |
+| `rotation`, `translation`, `scale` | The fitted orthogonal matrix and translation; scale is always one. |
+| `residual_before`, `residual_after` | Root mean squared Euclidean anchor separation before and after the transformation. |
+| `relative_residual` | Post-fit separation divided by the previous anchor set's root mean squared radius around its centroid. |
+
+When `relative_residual > 0.5`, the fit is marked **weak** but remains linked. This is an explicit diagnostic heuristic, not a validated statistical cutoff. The constants are recorded alongside each fit. Reset and initial-reference maps have no fitted residuals. These diagnostics make a weak or failed link inspectable; fit error is not a confidence interval or a test that ideological preferences were stable.
+
+Every publication recomputes the full chronological alignment from the stored **raw** coordinates, including when only one Congress's source data is refreshed. This prevents repeated transformations from accumulating on already aligned coordinates and propagates a revised early map to its later linked Congresses. Record the publication and source dates when reporting a trajectory: an upstream revision can change earlier coordinates as well as later alignment.
 
 ## Conductance and the spectral sweep
 
@@ -166,6 +204,7 @@ The gap `λ₃ − λ₂` is an eigengap relevant to spectral separation, not th
 | Plot captions mix raw correlation and transformed similarity thresholds. | The weight scale and threshold conversion are explicit. | Full and thresholded graph results can be interpreted correctly. |
 | `1/λ₂` is discussed as mixing or legislative time. | It is labeled a spectral proxy. | Avoids an unsupported behavioral interpretation. |
 | Data is downloaded at execution without a saved analysis manifest. | Published outputs include data/provenance metadata. | Readers can distinguish calculation time from source coverage. |
+| Each Congress's eigenvectors have an independently chosen orientation. | A separate display fit links adjacent maps through shared senators, preserving raw coordinates. | Relative structural movement can be followed under an explicit anchor assumption, with link-quality diagnostics. |
 
 The original files are retained as historical research artifacts. The maintained pipeline is a **revised implementation**, and agreement with the thesis's rounded Table 6.1 values is not a correctness criterion.
 
@@ -178,6 +217,7 @@ For a research claim or publication, report:
 - Whether a result describes the full similarity graph or a thresholded graph, with its threshold and distance convention.
 - Sensitivity to missing-data treatment, minimum overlapping votes, edge thresholds, and short member records.
 - Whether an in-progress Congress is compared with a complete term or a matched partial-term window.
+- For aligned trajectories, the anchor population, segment boundaries, fit residuals, and sensitivity to alternative anchor choices.
 - The uncertainty and statistical design behind any historical or causal claim.
 
 Historical parties and issue agendas change. Normalized metrics and colored clusters do not establish that a contemporary party is equivalent to a historical party with a similar name or color. Likewise, drawing a line at a historical event is context, not an identified causal effect.

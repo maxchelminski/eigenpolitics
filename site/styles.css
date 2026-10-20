@@ -589,11 +589,53 @@ h3 {
   margin:12px 0 34px;
 }
 
-.score-coverage {
+.alignment-controls {
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:12px;
   font-size:10px;
   line-height:1.7;
   color:var(--muted);
-  margin:8px 0;
+  margin:13px 0 0;
+}
+
+.alignment-controls label {
+  display:flex;
+  align-items:center;
+  gap:6px;
+  cursor:pointer;
+}
+
+.alignment-controls input {
+  accent-color:var(--green);
+  margin:0;
+}
+
+#alignment-status {
+  color:#916a3a;
+}
+
+.trail-line {
+  stroke:var(--ink);
+  stroke-width:1.5;
+  stroke-dasharray:4 3;
+}
+
+.trail-start {
+  fill:var(--white);
+  stroke:var(--ink);
+  stroke-width:1.5;
+}
+
+.movement-heading {
+  display:block;
+  margin-top:18px;
+}
+
+.clear-selection {
+  margin-top:12px;
+  font-size:10px;
 }
 
 .network-controls {

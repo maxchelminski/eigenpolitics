@@ -3,7 +3,7 @@
 const $ = (selector) => document.querySelector(selector);
 const SVG_NS = "http://www.w3.org/2000/svg";
 const palette = { 100: "#528bb0", 200: "#cb785b", 328: "#9a9468", 1: "#9c8259", 9: "#70966c", 13: "#70966c", 22: "#b2934f", 29: "#c5a54f", 37: "#9786ad", 46: "#4e9691", 112: "#778aaf", 370: "#979659", 380: "#b6819d" };
-const state = { index: null, data: null, view: "spectral", selected: null, query: "", threshold: 0.8, request: 0, target: null, compare: false, cache: new Map(), pending: new Map(), generation: 0, axes: null };
+const state = { index: null, data: null, view: "spectral", aligned: true, selected: null, selectedName: "", previousData: null, previousStatus: "none", query: "", threshold: 0.8, request: 0, target: null, compare: false, cache: new Map(), pending: new Map(), generation: 0, axes: null };
 const metricInfo = {
   fiedler_value: ["How connected is the chamber?", "Lower λ₂ indicates weaker connectivity in this weighted voting graph.", "Normalized Laplacian · λ₂"],
   sweep_conductance: ["Where does the network separate?", "Lower sweep conductance means a smaller cut relative to the smaller group’s volume.", "Fiedler sweep conductance"],
@@ -63,6 +63,13 @@ async function loadCongress(summary) {
   if (!state.pending.has(key)) {
     const pending = readJSON(safeDataPath(summary.data_file)).then(data => {
       if (!Array.isArray(data.nodes) || !data.nodes.length) throw new Error("The Congress data contains no analyzed members.");
+      const alignment = data.alignment;
+      if (!alignment || !["reference", "aligned", "reset"].includes(alignment.status)
+        || !Number.isInteger(alignment.segment_id) || !Number.isInteger(alignment.root_congress)
+        || (alignment.status === "aligned" && (!Number.isInteger(alignment.reference_congress) || !Array.isArray(alignment.anchor_ids)))
+        || data.nodes.some(node => !Number.isFinite(node.aligned_x) || !Number.isFinite(node.aligned_y))) {
+        throw new Error("The Congress snapshot contains incomplete alignment data.");
+      }
       const result = { ...summary, ...data };
       if (generation === state.generation) state.cache.set(key, result);
       return result;
@@ -80,6 +87,8 @@ function setFixedAxes(index) {
     x: valid(source?.x) ? [...source.x] : [-1, 1],
     y: valid(source?.y) ? [...source.y] : [-1, 1],
     betweenness: valid(source?.betweenness) ? [...source.betweenness] : [0, 1],
+    aligned_x: valid(index.aligned_axis_bounds?.x) ? [...index.aligned_axis_bounds.x] : [-1, 1],
+    aligned_y: valid(index.aligned_axis_bounds?.y) ? [...index.aligned_axis_bounds.y] : [-1, 1],
   };
 }
 function fillTimeline() {
@@ -154,7 +163,8 @@ async function selectCongress(congress, updateURL = true) {
     const data = await loadCongress(summary);
     if (request !== state.request) return;
     state.data = data;
-    state.selected = null;
+    state.previousData = null;
+    state.previousStatus = data.alignment?.status === "aligned" ? "loading" : "none";
     state.query = "";
     $("#senator-search").value = "";
     $("#load-error").hidden = true;
@@ -169,23 +179,89 @@ async function selectCongress(congress, updateURL = true) {
     renderDetail();
     renderHistory();
     renderProvenance();
+    renderAlignmentInfo();
     renderComparison();
     renderOutliers();
     $("#congress-current").textContent = `${ordinal(data.congress)} Congress · ${period(data)}`;
     const included = number(data.members || data.nodes.length);
     $("#data-notes").textContent = `${ordinal(data.congress)} Congress · ${period(data)} · ${included} analyzed members across the term, including replacements. Roll calls through ${dateLabel(data.last_vote_date)}. Exclusions and exact coverage are documented in provenance.`;
     $("#plot-range").textContent = `${number(data.rollcalls)} ROLL CALLS · ${period(data)}`;
+    loadPreviousCongress(data, request);
   } catch (error) {
     if (request !== state.request) return;
     $("#load-error").textContent = `${error.message} Run the data refresh command in the README and reload. The last successfully loaded chart, if any, remains below.`;
     $("#load-error").hidden = false;
-    if (state.data) syncTimeline(state.data);
+    if (state.data) {
+      syncTimeline(state.data);
+      // A failed navigation invalidates the retained chart's earlier request.
+      // Rejoin its pending predecessor load so selected-member tracking recovers.
+      if (state.previousStatus === "loading") loadPreviousCongress(state.data, request);
+    }
   } finally {
     if (request === state.request) {
       $("#workspace").setAttribute("aria-busy", "false");
       $("#timeline-status").textContent = "";
     }
   }
+}
+async function loadPreviousCongress(current, request) {
+  if (current.alignment?.status !== "aligned") return;
+  const summary = state.index.congresses.find(d => d.congress === current.alignment.reference_congress);
+  if (!summary) { state.previousStatus = "unavailable"; renderDetail(); return; }
+  try {
+    const previous = await loadCongress(summary);
+    if (state.data !== current || request !== state.request) return;
+    state.previousData = previous;
+    state.previousStatus = "ready";
+  } catch {
+    if (state.data !== current || request !== state.request) return;
+    state.previousStatus = "unavailable";
+  }
+  renderDetail();
+  renderMemberTrail();
+}
+function selectMember(node) {
+  state.selected = node.id;
+  state.selectedName = prettyName(node.name);
+  renderDetail();
+  highlightPoints();
+}
+function appendClearSelection(panel) {
+  const clear = html("button", "inline-button clear-selection", "Clear selection");
+  clear.id = "clear-selection";
+  clear.type = "button";
+  clear.addEventListener("click", () => {
+    state.selected = null; state.selectedName = "";
+    renderDetail(); highlightPoints();
+  });
+  panel.append(clear);
+}
+function selectedMovement() {
+  const current = state.data, previous = state.previousData;
+  if (!state.aligned || current?.alignment?.status !== "aligned" || !previous
+    || previous.congress !== current.alignment.reference_congress
+    || current.alignment.segment_id !== previous.alignment?.segment_id
+    || !current.alignment.anchor_ids?.includes(Number(state.selected))) return null;
+  const node = current.nodes.find(n => String(n.id) === String(state.selected));
+  const before = previous.nodes.find(n => String(n.id) === String(state.selected));
+  if (!node || !before) return null;
+  return { node, before, congress: previous.congress,
+    dx: node.aligned_x - before.aligned_x, dy: node.aligned_y - before.aligned_y };
+}
+function renderAlignmentInfo() {
+  const a = state.data.alignment, box = $("#alignment-diagnostics");
+  box.replaceChildren();
+  if (!a) { box.append(html("p", "", "Alignment data is unavailable. Rebuild the research snapshot.")); return; }
+  const intro = a.status === "aligned" ?
+    `${ordinal(state.data.congress)} aligned to the ${ordinal(a.reference_congress)} using ${a.anchor_count} shared senators. Fit: ${a.quality}.` :
+    `${ordinal(state.data.congress)} starts alignment segment ${a.segment_id}. ${a.reason || "This is the reference frame."}`;
+  box.append(html("p", "", intro));
+  if (a.status === "aligned") box.append(html("p", "",
+    `Anchor RMS distance: ${format(a.residual_before, 4)} before → ${format(a.residual_after, 4)} after. Relative residual: ${format(a.relative_residual, 3)}. No rescaling.`));
+  box.append(html("p", "", `Reference frame: ${ordinal(a.root_congress)} Congress. Exact anchors and transforms are included in the downloaded JSON.`));
+  $("#alignment-status").hidden = !(state.aligned && ["weak", "reset"].includes(a.quality));
+  $("#alignment-status").textContent = a.quality === "weak" ? "Weak alignment fit · see alignment details" :
+    "New alignment segment · positions do not link to the preceding Congress";
 }
 function renderStats() {
   const d = state.data;
@@ -218,14 +294,13 @@ function renderLegend() {
   }));
 }
 function coordinates(data, view) {
-  if (view === "ideology") return data.nodes
-    .filter(node => Number.isFinite(node.nominate_dim1) && Number.isFinite(node.nominate_dim2))
-    .map(node => ({ node, x: node.nominate_dim1, y: node.nominate_dim2 }));
-  return data.nodes.map((node) => ({ node, x: Number(node.x), y: view === "brokerage" ? Number(node.betweenness) : Number(node.y) }));
+  return data.nodes.map(node => ({ node,
+    x: state.aligned ? node.aligned_x : node.x,
+    y: view === "brokerage" ? node.betweenness : state.aligned ? node.aligned_y : node.y }));
 }
 function boundsFor(view) {
-  return view === "ideology" ? [[-1, 1], [-1, 1]] :
-    [state.axes.x, view === "brokerage" ? state.axes.betweenness : state.axes.y];
+  return [state.aligned ? state.axes.aligned_x : state.axes.x,
+    view === "brokerage" ? state.axes.betweenness : state.aligned ? state.axes.aligned_y : state.axes.y];
 }
 function matches(node) {
   return !state.query || `${node.name} ${prettyName(node.name)} ${node.state} ${node.party}`.toLowerCase().includes(state.query);
@@ -238,8 +313,8 @@ function buildScatter(data, { compact = false, view = state.view, sharedBounds =
   const [xb, yb] = sharedBounds || boundsFor(view);
   const sx = (v) => margin.left + (v - xb[0]) / (xb[1] - xb[0]) * (width - margin.left - margin.right);
   const sy = (v) => height - margin.bottom - (v - yb[0]) / (yb[1] - yb[0]) * (height - margin.top - margin.bottom);
-  const svg = el("svg", { viewBox: `0 0 ${width} ${height}`, role: "group", "aria-label": `${ordinal(data.congress)} Senate ${view} chart. Use Tab to explore senators.`, "data-x-min": xb[0], "data-x-max": xb[1], "data-y-min": yb[0], "data-y-max": yb[1] });
-  svg.append(el("title", {}, `${ordinal(data.congress)} Senate: ${view === "ideology" ? "NOMINATE common ideological scale" : view === "brokerage" ? "betweenness versus Fiedler coordinate" : "two-dimensional spectral embedding"}`));
+  const svg = el("svg", { viewBox: `0 0 ${width} ${height}`, role: "group", "aria-label": `${ordinal(data.congress)} Senate ${view} chart. Use Tab to explore senators.`, "data-aligned": state.aligned, "data-x-min": xb[0], "data-x-max": xb[1], "data-y-min": yb[0], "data-y-max": yb[1], "data-plot-left": margin.left, "data-plot-right": width - margin.right, "data-plot-top": margin.top, "data-plot-bottom": height - margin.bottom });
+  svg.append(el("title", {}, `${ordinal(data.congress)} Senate: ${state.aligned ? "aligned" : "raw"} spectral ${view === "brokerage" ? "coordinate versus betweenness" : "embedding"}`));
   for (let i = 0; i <= 4; i++) {
     const x = xb[0] + i * (xb[1] - xb[0]) / 4, y = yb[0] + i * (yb[1] - yb[0]) / 4;
     svg.append(el("line", { x1: sx(x), x2: sx(x), y1: margin.top, y2: height - margin.bottom, class: "chart-grid" }));
@@ -249,9 +324,8 @@ function buildScatter(data, { compact = false, view = state.view, sharedBounds =
   }
   svg.append(el("line", { x1: sx(0), x2: sx(0), y1: margin.top, y2: height - margin.bottom, class: "chart-zero" }));
   svg.append(el("line", { x1: margin.left, x2: width - margin.right, y1: sy(0), y2: sy(0), class: "chart-zero" }));
-  svg.append(el("text", { x: (width + margin.left) / 2, y: height - 6, "text-anchor": "middle", class: "chart-label" }, view === "ideology" ? "NOMINATE · dimension 1" : "Fiedler coordinate · v₂"));
-  svg.append(el("text", { transform: `translate(13,${(height - margin.bottom) / 2}) rotate(-90)`, "text-anchor": "middle", class: "chart-label" }, view === "ideology" ? "NOMINATE · dimension 2" : view === "brokerage" ? "Betweenness centrality" : "Secondary coordinate · v₃"));
-  if (!points.length) svg.append(el("text", { x: width / 2, y: height / 2, "text-anchor": "middle", class: "chart-label" }, "No NOMINATE scores available for this Congress."));
+  svg.append(el("text", { x: (width + margin.left) / 2, y: height - 6, "text-anchor": "middle", class: "chart-label" }, state.aligned ? "Aligned spectral axis 1" : "Fiedler coordinate · v₂"));
+  svg.append(el("text", { transform: `translate(13,${(height - margin.bottom) / 2}) rotate(-90)`, "text-anchor": "middle", class: "chart-label" }, view === "brokerage" ? "Betweenness centrality" : state.aligned ? "Aligned spectral axis 2" : "Secondary coordinate · v₃"));
   if (view === "network") {
     const byID = new Map(points.map((p) => [String(p.node.id), p]));
     const edges = (data.edges || []).filter((edge) => edge.weight >= state.threshold);
@@ -264,16 +338,16 @@ function buildScatter(data, { compact = false, view = state.view, sharedBounds =
   }
   points.forEach(({ node, x, y }) => {
     const isSelected = !compact && String(state.selected) === String(node.id);
-    const description = view === "ideology" ? `NOMINATE 1: ${format(x, 3)} · NOMINATE 2: ${format(y, 3)}` :
+    const description = state.aligned ? `Aligned axes: ${format(node.aligned_x, 4)}, ${format(node.aligned_y, 4)} · Brokerage: ${format(node.betweenness, 4)}` :
       `Fiedler: ${format(node.x, 4)} · Brokerage: ${format(node.betweenness, 4)}`;
     const circle = el("circle", { cx: sx(x), cy: sy(y), r: compact ? 3.5 : (mobile ? 3.8 : 4.4), fill: partyColor(node), class: `point${!compact && !matches(node) ? " dim" : ""}${isSelected ? " selected" : ""}`, tabindex: compact ? -1 : 0, role: "button", "aria-label": `${prettyName(node.name)}, ${node.party}, ${node.state}. ${description}` });
     circle.append(el("title", {}, `${prettyName(node.name)} · ${node.party} · ${node.state}\n${description}`));
     if (!compact) {
-      const activate = () => { state.selected = node.id; renderDetail(); highlightPoints(); };
+      const activate = () => selectMember(node);
       circle.dataset.id = node.id;
       circle.addEventListener("click", activate);
       circle.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); activate(); } });
-      circle.addEventListener("focus", () => { state.selected = node.id; renderDetail(); highlightPoints(); });
+      circle.addEventListener("focus", activate);
     }
     svg.append(circle);
   });
@@ -291,12 +365,28 @@ function highlightPoints() {
     svg.append(label);
   }
   $("#outlier-list").querySelectorAll(".outlier-button").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.id === String(state.selected))));
+  renderMemberTrail();
+}
+function renderMemberTrail() {
+  const svg = $("#main-chart svg");
+  svg?.querySelector("#member-trail")?.remove();
+  const movement = selectedMovement();
+  if (!svg || !movement || state.view === "brokerage") return;
+  const d = svg.dataset;
+  const sx = value => Number(d.plotLeft) + (value - Number(d.xMin)) / (Number(d.xMax) - Number(d.xMin)) * (Number(d.plotRight) - Number(d.plotLeft));
+  const sy = value => Number(d.plotBottom) - (value - Number(d.yMin)) / (Number(d.yMax) - Number(d.yMin)) * (Number(d.plotBottom) - Number(d.plotTop));
+  const trail = el("g", { id: "member-trail", "data-member-id": movement.node.id,
+    "data-from-congress": movement.congress, "data-to-congress": state.data.congress, "pointer-events": "none" });
+  trail.append(el("line", { class: "trail-line", x1: sx(movement.before.aligned_x), y1: sy(movement.before.aligned_y),
+    x2: sx(movement.node.aligned_x), y2: sy(movement.node.aligned_y) }));
+  trail.append(el("circle", { class: "trail-start", cx: sx(movement.before.aligned_x), cy: sy(movement.before.aligned_y), r: 6 }));
+  trail.append(el("title", {}, `${prettyName(movement.node.name)}: hollow marker shows ${ordinal(movement.congress)} Congress; filled point shows ${ordinal(state.data.congress)}.`));
+  svg.insertBefore(trail, svg.querySelector(".point"));
 }
 function renderChart() {
   if (!state.data) return;
   const config = {
-    spectral: ["SPECTRAL EMBEDDING", "Two dimensions of division", "Each point is a senator. Nearby positions reflect similar patterns in the weighted voting network. Party colors are added after the analysis.", ""],
-    ideology: ["NOMINATE COMMON SCALE", "Ideology across Congresses", "Voteview’s career-level NOMINATE scores place senators on a common scale. Move through Congresses to explore the changing membership.", ""],
+    spectral: [state.aligned ? "ALIGNED SPECTRAL EMBEDDING" : "RAW SPECTRAL EMBEDDING", "Two dimensions of division", state.aligned ? "Shared senators align each Congress with the previous one. Select a senator, then move the timeline to follow their position." : "Each point is a senator. Nearby positions reflect similar patterns in the weighted voting network.", ""],
     network: ["WEIGHTED VOTING NETWORK", "The ties between votes", "Lines connect senators whose transformed voting correlation meets the display threshold. Positions use the same spectral embedding as the geometry view.", "This slider changes the visible ties only. Spectral metrics use the full weighted graph; brokerage uses a separate 0.5 edge threshold."],
     brokerage: ["STRUCTURAL BROKERAGE", "Who lies on the paths?", "Height shows weighted shortest-path betweenness on a graph retaining ties of at least 0.5. Higher values identify more frequent intermediaries in this model.", "Short service can produce misleadingly high brokerage: missing and nonservice votes are coded zero. Check each member’s record coverage before interpreting a high score."],
   }[state.view];
@@ -307,10 +397,8 @@ function renderChart() {
   $("#interpretation-text").parentElement.hidden = !config[3];
   $("#network-controls").hidden = state.view !== "network";
   $("#main-chart").replaceChildren(buildScatter(state.data));
-  const missing = state.data.nodes.length - coordinates(state.data, state.view).length;
-  $("#score-coverage").hidden = state.view !== "ideology" || missing === 0;
-  $("#score-coverage").textContent = `${number(missing)} analyzed ${missing === 1 ? "senator has" : "senators have"} no complete NOMINATE score and ${missing === 1 ? "is" : "are"} omitted from this view.`;
-  $("#plot-source").textContent = state.view === "ideology" ? "Voteview NOMINATE · Select a senator" : "Fixed axes · Select a senator";
+  $("#plot-source").textContent = state.aligned ? "Shared-senator alignment · Fixed axes" : "Raw eigenvectors · Fixed axes";
+  renderAlignmentInfo();
   renderLegend();
   renderDetail();
   renderSearch();
@@ -329,10 +417,11 @@ function renderOutliers() {
     if (!node) return;
     const button = html("button", "outlier-button");
     button.type = "button"; button.dataset.id = id;
-    button.setAttribute("aria-pressed", "false");
+    button.setAttribute("aria-pressed", String(String(state.selected) === String(id)));
     button.append(html("strong", "", prettyName(node.name)), html("span", "", `${node.state} · ${number(node.votes_cast)} / ${number(data.rollcalls)} encoded votes`));
     button.addEventListener("click", () => {
       state.selected = id;
+      state.selectedName = prettyName(node.name);
       state.query = "";
       $("#senator-search").value = "";
       renderDetail(); renderChart();
@@ -358,7 +447,7 @@ function renderSearch() {
   results.slice(0, 12).forEach((node) => {
     const button = html("button", "", prettyName(node.name));
     button.type = "button";
-    button.addEventListener("click", () => { state.selected = node.id; renderDetail(); highlightPoints(); });
+    button.addEventListener("click", () => selectMember(node));
     container.append(button);
   });
   if (results.length > 12) container.append(html("p", "", `${results.length} matches. Refine the search to see more names.`));
@@ -367,22 +456,39 @@ function renderDetail() {
   const panel = $("#senator-detail");
   panel.replaceChildren();
   const node = state.data.nodes.find((item) => String(item.id) === String(state.selected));
-  if (!node) { panel.append(html("span", "detail-label", "EXPLORE A POINT"), html("p", "", "Select a dot or search by name to see a senator’s coordinates and brokerage.")); return; }
+  if (!node) {
+    if (state.selected !== null) {
+      const excluded = state.data.provenance?.excluded_members?.find(n => String(n.id) === String(state.selected));
+      panel.append(html("span", "detail-label", "TRACKED SENATOR"), html("h4", "", state.selectedName),
+        html("p", "", `Not included in the ${ordinal(state.data.congress)} Congress analysis.${excluded ? ` ${excluded.reason}.` : ""}`));
+      panel.append(html("p", "", "Keep moving the timeline to follow their eligible records."));
+      appendClearSelection(panel);
+    } else panel.append(html("span", "detail-label", "EXPLORE A POINT"), html("p", "", "Select a dot or search by name, then move the timeline to follow that senator."));
+    return;
+  }
   panel.append(html("span", "detail-label", "SELECTED SENATOR"), html("h4", "", prettyName(node.name)), html("p", "", `${node.party} · ${node.state}`));
   const values = html("div", "detail-values");
   const coverage = Number(node.votes_cast) / state.data.rollcalls;
-  const positions = state.view === "ideology" ?
-    [["NOMINATE 1", format(node.nominate_dim1)], ["NOMINATE 2", format(node.nominate_dim2)]] :
-    [["FIEDLER", format(node.x, 4)], ["BROKERAGE", format(node.betweenness, 4)]];
+  const positions = state.aligned ?
+    [["ALIGNED AXIS 1", format(node.aligned_x, 4)], ["ALIGNED AXIS 2", format(node.aligned_y, 4)]] :
+    [["FIEDLER · v₂", format(node.x, 4)], ["SECONDARY · v₃", format(node.y, 4)]];
+  positions.push(["BROKERAGE", format(node.betweenness, 4)]);
   [...positions, ["ENCODED ±1 VOTES", number(node.votes_cast)], ["RECORD COVERAGE", `${format(coverage * 100, 1)}%`]].forEach(([label, value]) => {
     const item = html("div");
     item.append(html("span", "", label), html("strong", "", value));
     values.append(item);
   });
   panel.append(values);
-  if (state.view === "ideology" && (!Number.isFinite(node.nominate_dim1) || !Number.isFinite(node.nominate_dim2)))
-    panel.append(html("p", "coverage-warning", "No complete NOMINATE score is available. This senator remains in the graph analysis."));
+  const movement = selectedMovement();
+  if (movement) {
+    panel.append(html("span", "detail-label movement-heading", `CHANGE SINCE ${ordinal(movement.congress).toUpperCase()}`),
+      html("p", "member-change", `Δ axis 1: ${format(movement.dx, 4)} · Δ axis 2: ${format(movement.dy, 4)}`),
+      html("p", "", state.view === "brokerage" ? "Relative movement after fitting shared senators." : "Hollow marker: previous Congress. Filled point: this Congress."));
+    if (state.data.alignment.quality === "weak") panel.append(html("p", "coverage-warning", "Weak alignment fit. Inspect the alignment details before interpreting this change."));
+  } else if (state.aligned && state.previousStatus === "loading") panel.append(html("p", "", "Loading the previous Congress’s position…"));
+  else if (state.aligned && state.previousStatus === "unavailable") panel.append(html("p", "", "Previous Congress unavailable; movement is not shown."));
   if (coverage < 0.1) panel.append(html("p", "coverage-warning", "Low record coverage. Zero-coded nonservice or missing votes can inflate apparent brokerage. This fraction is not a service-adjusted attendance rate."));
+  appendClearSelection(panel);
 }
 function renderHistory() {
   if (!state.index || !state.data) return;
@@ -438,27 +544,27 @@ async function renderComparison() {
   const panel = $("#comparison-panel");
   panel.hidden = !state.compare;
   if (!state.compare || !state.data) return;
-  const current = state.data, view = state.view;
+  const current = state.data, view = state.view, aligned = state.aligned;
   const baseline = state.index.congresses.find((d) => d.congress === 96);
   if (!baseline) { panel.replaceChildren(html("p", "", "The 96th Congress snapshot is not available. Refresh Congress 96 to enable this comparison.")); return; }
   try {
     const prior = await loadCongress(baseline);
-    if (!state.compare || state.data !== current || state.view !== view) return;
+    if (!state.compare || state.data !== current || state.view !== view || state.aligned !== aligned) return;
     const sharedBounds = boundsFor(view);
-    panel.replaceChildren(html("h3", "", view === "ideology" ? "Two Senates on a common ideological scale" : "Two chambers, one visual frame"));
+    panel.replaceChildren(html("h3", "", aligned ? "Two Senates, aligned spectral geometry" : "Two Senates, raw spectral geometry"));
+    if (aligned && prior.alignment?.segment_id !== current.alignment?.segment_id)
+      panel.append(html("p", "coverage-warning", "These Congresses belong to different alignment segments; their coordinates are not linked."));
     const grid = html("div", "comparison-grid");
     [prior, current].forEach((data) => {
       const item = html("div"), caption = html("div", "comparison-caption");
       caption.append(html("strong", "", `${ordinal(data.congress)} · ${period(data)}`),
-        html("span", "", view === "ideology" ? `${coordinates(data, view).length} scored senators` : `Graph λ₂ ${format(data.fiedler_value)}`));
+        html("span", "", `Graph λ₂ ${format(data.fiedler_value)}`));
       item.append(caption, buildScatter(data, { compact: true, view, sharedBounds }));
-      const missing = data.nodes.length - coordinates(data, view).length;
-      if (view === "ideology" && missing) item.append(html("p", "score-coverage", `${missing} senators without complete NOMINATE scores omitted.`));
       grid.append(item);
     });
     panel.append(grid);
   } catch (error) {
-    if (!state.compare || state.data !== current || state.view !== view) return;
+    if (!state.compare || state.data !== current || state.view !== view || state.aligned !== aligned) return;
     panel.replaceChildren(html("p", "", `Comparison unavailable: ${error.message}`));
   }
 }
@@ -469,6 +575,7 @@ function renderProvenance() {
     snapshot_generated_at: state.index.generated_at,
     methodology_version: data.methodology_version || state.index.methodology_version,
     latest_roll_call_date: data.last_vote_date,
+    alignment: data.alignment,
     provenance: data.provenance || {},
   }, null, 2);
   const summary = state.index.congresses.find((d) => d.congress === data.congress);
@@ -496,7 +603,10 @@ async function init() {
     renderSnapshot();
     const params = new URLSearchParams(location.search);
     const requested = Number(params.get("congress"));
-    if (["spectral", "ideology", "network", "brokerage"].includes(params.get("view"))) state.view = params.get("view");
+    if (["spectral", "network", "brokerage"].includes(params.get("view"))) state.view = params.get("view");
+    else if (params.has("view")) { const url = new URL(location.href); url.searchParams.set("view", "spectral"); history.replaceState(null, "", url); }
+    state.aligned = params.get("align") !== "raw";
+    $("#align-spectra").checked = state.aligned;
     document.querySelectorAll("[data-view]").forEach(item => item.setAttribute("aria-pressed", String(item.dataset.view === state.view)));
     const initial = index.congresses.some((d) => d.congress === requested) ? requested : index.congresses.at(-1).congress;
     await selectCongress(initial, false);
@@ -514,6 +624,13 @@ $("#congress-slider").addEventListener("input", event => {
 });
 $("#congress-prev").addEventListener("click", () => stepCongress(-1));
 $("#congress-next").addEventListener("click", () => stepCongress(1));
+$("#align-spectra").addEventListener("change", event => {
+  state.aligned = event.target.checked;
+  const url = new URL(location.href);
+  if (state.aligned) url.searchParams.delete("align"); else url.searchParams.set("align", "raw");
+  history.replaceState(null, "", url);
+  renderChart(); renderComparison();
+});
 document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => {
   state.view = button.dataset.view;
   const url = new URL(location.href);

@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 from eigenpolitics.cli import main, publish
-from eigenpolitics.data import fetch_csv, json_bytes, validate_csv
+from eigenpolitics.data import fetch_csv, validate_csv
 
 
 CSV = b"congress,chamber,icpsr,rollnumber,cast_code\n119,Senate,1,1,1\n"
@@ -24,7 +24,9 @@ def summary(number=119):
             "members": 3, "rollcalls": 4, "last_vote_date": "2026-09-30", "fiedler_value": .4,
             "sweep_conductance": .3, "mean_betweenness": .1, "max_betweenness": .2,
             "gini_betweenness": .5, "data_file": f"congresses/{number}.json",
-            "nodes": [{"x": -.1, "y": .2, "betweenness": .2}]}
+            "nodes": [{"id": 1, "x": -.1, "y": .2, "betweenness": .2},
+                      {"id": 2, "x": .2, "y": -.2, "betweenness": .1},
+                      {"id": 3, "x": .1, "y": .2, "betweenness": .1}]}
 
 
 class DataIntegrityTests(unittest.TestCase):
@@ -79,14 +81,15 @@ class DataIntegrityTests(unittest.TestCase):
     def test_subset_refresh_keeps_fixed_axes_covering_historical_nodes(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
-            historical = {**summary(1), "nodes": [{"x": -.68, "y": .83, "betweenness": .7}]}
+            historical = {**summary(1), "nodes": [{"id": 1, "x": -.68, "y": .83, "betweenness": .7}]}
             initial = publish([historical, summary()], output)
             refreshed = publish([summary()], output)
             bounds = refreshed["axis_bounds"]
             self.assertEqual(bounds, initial["axis_bounds"])
             self.assertEqual(bounds, {"x": [-.75, .75], "y": [-.9, .9], "betweenness": [0, .75]})
             for node in historical["nodes"]:
-                for axis, value in node.items():
+                for axis in ("x", "y", "betweenness"):
+                    value = node[axis]
                     self.assertLess(bounds[axis][0], value)
                     self.assertGreater(bounds[axis][1], value)
 
@@ -94,7 +97,7 @@ class DataIntegrityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
             publish([summary()], output)
-            updated = {**summary(), "nodes": [{"x": .51, "y": -.64, "betweenness": .81}]}
+            updated = {**summary(), "nodes": [{"id": 1, "x": .51, "y": -.64, "betweenness": .81}]}
             index = publish([updated], output)
             self.assertEqual(index["axis_bounds"],
                              {"x": [-.55, .55], "y": [-.7, .7], "betweenness": [0, .9]})
@@ -115,11 +118,48 @@ class DataIntegrityTests(unittest.TestCase):
             output = Path(directory)
             publish([summary()], output)
             before = (output / "index.json").read_bytes()
+            before_details = (output / "congresses/119.json").read_bytes()
             broken = {**summary(), "fiedler_value": float("nan")}
             with self.assertRaises(ValueError):
                 publish([broken], output)
             self.assertEqual((output / "index.json").read_bytes(), before)
-            self.assertEqual((output / "congresses/119.json").read_bytes(), json_bytes(summary()))
+            self.assertEqual((output / "congresses/119.json").read_bytes(), before_details)
+
+    def test_middle_refresh_realigns_unchanged_downstream_raw_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            publish([summary(1), summary(2), summary(3)], output)
+            before = json.loads((output / "congresses/3.json").read_text())
+            changed = summary(2)
+            changed["nodes"][0]["x"] = -.3
+            changed["nodes"][1]["y"] = -.1
+            publish([changed], output)
+            after = json.loads((output / "congresses/3.json").read_text())
+            self.assertEqual([(n["x"], n["y"]) for n in before["nodes"]],
+                             [(n["x"], n["y"]) for n in after["nodes"]])
+            self.assertNotEqual(before["alignment"]["rotation"], after["alignment"]["rotation"])
+            self.assertNotEqual([(n["aligned_x"], n["aligned_y"]) for n in before["nodes"]],
+                                [(n["aligned_x"], n["aligned_y"]) for n in after["nodes"]])
+            # Repeating the same partial refresh must not compound old transforms.
+            publish([changed], output)
+            self.assertEqual(json.loads((output / "congresses/3.json").read_text()), after)
+            bounds = json.loads((output / "index.json").read_text())["aligned_axis_bounds"]
+            for node in after["nodes"]:
+                self.assertLessEqual(bounds["x"][0], node["aligned_x"])
+                self.assertGreaterEqual(bounds["x"][1], node["aligned_x"])
+                self.assertLessEqual(bounds["y"][0], node["aligned_y"])
+                self.assertGreaterEqual(bounds["y"][1], node["aligned_y"])
+
+    def test_alignment_failure_preserves_all_published_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            publish([summary(1), summary(2), summary(3)], output)
+            before = {path.name: path.read_bytes() for path in output.rglob("*.json")}
+            changed = summary(2)
+            changed["nodes"][0]["x"] = float("inf")
+            with self.assertRaisesRegex(ValueError, "Nonfinite"):
+                publish([changed], output)
+            self.assertEqual({path.name: path.read_bytes() for path in output.rglob("*.json")}, before)
 
     def test_failed_congress_prevents_partial_publication(self):
         with tempfile.TemporaryDirectory() as directory:
