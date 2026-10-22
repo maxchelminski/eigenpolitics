@@ -87,6 +87,10 @@ python scripts/refresh_data.py --help
 
 Source downloads are cached locally under `.cache/`, which is excluded from Git. The `--refresh` flag asks for new source data rather than reusing that cache. Keep generated `site/data/` snapshots under version control when you want a reproducible repository state.
 
+The GitHub Pages workflow also commits `site/data/` to `main` when scheduled or manual refreshes find changed source content. Before starting local changes, run `git pull --ff-only origin main` to include those bot commits. The hosted job refreshes the current and previous Congress every six hours; it retains older analyses in Git and realigns the complete history. It does not rely on a persistent source cache. Timestamp-only refreshes deploy without a commit, so the site's retrieval timestamp can be newer than the copy in Git. See [deployment and update behavior](DEPLOYMENT.md#how-the-hosted-data-stays-current).
+
+After a methodology/schema change, rebuild all published Congresses with `python scripts/refresh_data.py` before committing. This can reuse validated local source caches; add `--refresh` to download fresh inputs for the whole history. A partial refresh cannot mix incompatible method versions. Check the snapshot without contacting Voteview with `python scripts/refresh_pages.py --check`.
+
 ## Project layout
 
 | Path | Purpose |
@@ -98,12 +102,13 @@ Source downloads are cached locally under `.cache/`, which is excluded from Git.
 | `site/data/congresses/` | Detailed generated snapshot for each Congress |
 | `site/research/thesis.pdf` | Unmodified copy of the original thesis for the site's PDF link |
 | `scripts/refresh_data.py` | Source download and spectral analysis |
+| `scripts/refresh_pages.py` | Hosted current/previous refresh, snapshot validation, and content-change detection |
 | `eigenpolitics/` | Reusable analysis, source-validation, and command-line implementation |
 | `scripts/serve.py` | Local static server |
 | `scripts/start.ps1` | Windows convenience launcher |
 | `tests/` | Data and mathematical regression tests |
 | `docs/images/` | Real screenshots and generated figures |
-| `.github/workflows/` | Validation and optional hosted refresh/deployment |
+| `.github/workflows/` | Validation and opt-in six-hour Pages refresh/deployment |
 
 The four original files remain at the repository root so their original names and contents are preserved.
 
@@ -112,6 +117,7 @@ The four original files remain at the repository root so their original names an
 ```bash
 python -m unittest discover -s tests -v
 python -m compileall -q scripts eigenpolitics
+python scripts/refresh_pages.py --check
 node --check site/app.js
 ```
 

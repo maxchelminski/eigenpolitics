@@ -1,14 +1,16 @@
-# Optional hosting and automatic updates
+# GitHub Pages hosting and automatic updates
+
+Repository: [maxchelminski/eigenpolitics](https://github.com/maxchelminski/eigenpolitics). The configured project address is [maxchelminski.github.io/eigenpolitics](https://maxchelminski.github.io/eigenpolitics/); a successful Pages deployment makes the site available there.
 
 Local use is ready with `python scripts/serve.py`. No hosting, domain, GitHub repository, or scheduled job is required for that workflow.
 
 For local updates while the computer is awake, install the analysis dependencies and run `python scripts/serve.py --refresh-hours 6` (or `.\scripts\start.ps1 -Live`). This starts an immediate background refresh and waits six hours between subsequent attempts. It stops with the server process and does not install a system schedule. See [local automatic refresh](DEVELOPMENT.md#optional-local-automatic-refresh).
 
-The included Pages workflow is an opt-in path to a hosted research companion. It remains skipped until the repository variable `ENABLE_PAGES` is set to `true`.
+The included Pages workflow publishes the research companion and refreshes its data every six hours. It remains opt-in for forks: publishing jobs are skipped until the repository variable `ENABLE_PAGES` is set to `true`.
 
 ## Recommended first deployment
 
-Use GitHub Pages for the public thesis site. The explorer is a static site: visitors' browsers draw the charts from published JSON, while a separate Python job refreshes that JSON. GitHub can host the files and run the existing daily refresh workflow, so neither an always-on home computer nor a purchased domain is necessary.
+Use GitHub Pages for the public thesis site. The explorer is a static site: visitors' browsers draw the charts from published JSON, while a separate Python job refreshes that JSON. GitHub hosts the files and runs the refresh workflow, so neither an always-on home computer nor a purchased domain is necessary.
 
 An NVIDIA Jetson Orin Nano Super can also serve the site or run the refresh pipeline. That is useful for learning self-hosting, but entails maintaining the device, web server, and public connection. The current analysis uses CPU-based NumPy, pandas, SciPy, and NetworkX; its GPU is not used.
 
@@ -18,32 +20,37 @@ GitHub Pages serves static HTML, CSS, JavaScript, and JSON. A project site norma
 
 The site uses relative asset and data paths so it can work under a repository path as well as at the root of a local server.
 
-## Publish when ready
+## Initial setup or publishing a fork
 
-1. Review the thesis files and choose the repository's visibility and licensing before uploading. The current project does not grant an open-source license.
-2. Create an empty GitHub repository and push this repository to its `main` branch. If using another default branch, update the `push.branches` entry in `.github/workflows/pages.yml`.
+1. Review the thesis files, repository visibility, and the repository's licensing notes before uploading. Publishing a repository does not itself grant an open-source license.
+2. Push the repository to its `main` branch. The project repository is already [maxchelminski/eigenpolitics](https://github.com/maxchelminski/eigenpolitics); use your own repository for a fork. If using another default branch, update every `main` reference in `.github/workflows/pages.yml`, including the trigger, branch guard, checkout, fetch, and push.
 3. In the repository, open **Settings → Pages → Build and deployment → Source**, and select **GitHub Actions**. GitHub documents this in [Configuring a publishing source](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site).
 4. Under **Settings → Secrets and variables → Actions → Variables**, create the repository variable `ENABLE_PAGES` with the value `true`.
-5. Open **Actions → Refresh data and deploy Pages → Run workflow** on the default branch.
+5. A push to `main` publishes the checked-in snapshot. Open **Actions → Refresh data and deploy Pages → Run workflow** on `main` to download fresh data and publish it immediately.
 6. Open the URL shown by the successful deployment. Keep the `github-pages` environment restricted to your intended deployment branch.
 
-The workflow uses GitHub's built-in token and Pages actions. No personal access token, external API key, or domain configuration is needed. The required deployment permissions are limited to the publishing job. The action sequence follows [GitHub's custom Pages workflow documentation](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
+The workflow uses GitHub's built-in `GITHUB_TOKEN` and Pages actions. No personal access token, external API key, or domain configuration is needed. The publishing job requests `contents: write` to retain changed data snapshots, plus `pages: write` and `id-token: write` for deployment. Repository and organization policies must permit those permissions; branch protection that blocks the bot's normal push will stop a changed-data deployment. The action sequence follows [GitHub's custom Pages workflow documentation](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
 
 ## How the hosted data stays current
 
-Once enabled, the workflow runs on pushes to `main`, manual dispatch, and a daily schedule at **10:23 UTC**. GitHub's scheduler is best effort; a scheduled run is not a guarantee of a particular publication time.
+Once enabled, the workflow runs on pushes to `main`, manual dispatch, and every six hours at **00:23, 06:23, 12:23, and 18:23 UTC**. GitHub's scheduler is best effort; a scheduled run is not a guarantee of a particular publication time.
 
-Each run checks out the repository, tests the pipeline, and restores `.cache/voteview` from the latest matching GitHub Actions source cache. It then downloads fresh inputs for the current and preceding Congresses and rebuilds the full history. Older source files are reused from the validated cache; missing or evicted files are downloaded again. The resulting `site/` directory is deployed, and a successful job saves the source cache under a new key for that run.
+Every run checks out the latest `main`, runs the regression tests, and validates the checked-in data manifest and source checksums. The two publication paths are:
 
-The current Congress is determined by the refresh script rather than hard-coded in the workflow. Refreshing the preceding Congress captures its final votes after a term change. Rebuilding from the saved source history carries those inputs forward on later runs, even though every workflow begins with a fresh repository checkout.
+- **Push:** deploy the checked-in `site/` snapshot without fetching Voteview. A reviewed interface or documentation update can therefore publish during an upstream outage.
+- **Scheduled or manual run:** `scripts/refresh_pages.py` downloads the current and preceding Congress's votes, members, and roll-call metadata: six CSV files. The pipeline recomputes those two analyses and realigns the complete published history from its raw coordinates. Other Congresses retain their graph calculations.
+
+The current Congress is determined by the refresh script rather than hard-coded in the workflow. Refreshing the preceding Congress captures its final votes after a term change. Successfully changed snapshots are retained in Git, so those final inputs remain represented in later runs without relying on an Actions cache or downloading the full history again.
 
 This is a periodically refreshed static site. Freshness depends on Voteview publishing new data and a successful workflow run. It is not a direct feed from the Senate floor.
 
-The workflow **does not commit generated data back into the repository**. The deployed site can therefore be newer than the JSON files in Git. To preserve a new snapshot in Git, run the refresh locally and review and commit `site/data/`.
+The helper compares the source CSV SHA-256 hashes, methodology/schema versions, and set of Congresses before and after a refresh. When source content changes, `github-actions[bot]` commits the validated `site/data/` snapshot to `main` before deployment. When only retrieval/build timestamps change, it reports that the source content is unchanged and deploys the refreshed timestamps without adding a Git commit. The live retrieval timestamp can therefore be newer than the timestamp in Git even when their source data is identical.
 
-Historical source caches are reused, so an older Congress is not automatically downloaded again on every deployment. To request a fresh historical analysis locally, use `python scripts/refresh_data.py --congress NUMBER --refresh`, replacing `NUMBER` with the Congress. A local JSON commit does not change the runner's source cache. To force the hosted workflow to retrieve older inputs, add the desired Congress to its refresh command, or change the `voteview-source-v1-` prefix consistently in both the cache `key` and `restore-keys` to start a new full source cache.
+Bot commits use the built-in token and do not recursively trigger another push workflow. Before changing files locally, synchronize the retained snapshots with `git pull --ff-only origin main`. A non-fast-forward pull needs normal Git reconciliation; do not force-push over the bot's history. The publishing workflow checks whether `main` changed while it was working and uses only a normal, non-forced push. A concurrent change fails the run instead of overwriting it; rerun from the latest `main`.
 
-If download, analysis, tests, or deployment fails, the workflow fails and the previous successful deployment remains available. Check the Actions run rather than assuming the date on the live site has advanced.
+To update an older Congress, pull `main`, run `python scripts/refresh_data.py --congress NUMBER --refresh`, review the resulting `site/data/` changes, and commit and push them. A methodology or schema change requires rebuilding **all** published Congresses with `python scripts/refresh_data.py` before committing; use `--refresh` too if fresh historical source inputs are wanted. The snapshot validator rejects mismatched methodology/schema versions rather than mixing old and new calculations.
+
+If download, analysis, snapshot validation, tests, snapshot push, or deployment fails, the workflow fails and the previous successful deployment remains available. Check the Actions run rather than assuming the date on the live site has advanced. A successful manual run is the simplest way to retry immediately; no artificial keepalive commits are created.
 
 ## Pause or change updates
 
@@ -52,7 +59,7 @@ If download, analysis, tests, or deployment fails, the workflow fails and the pr
 - Disable the workflow in GitHub Actions to stop it entirely.
 - Use GitHub Pages settings to unpublish the site when desired.
 
-GitHub may delay scheduled runs and disables scheduled workflows in public repositories after 60 days without repository activity. The last deployed site remains online, but its data stops refreshing until updates resume. Review [GitHub's schedule event documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule) when deciding whether this cadence meets your needs.
+GitHub may delay scheduled runs and disables scheduled workflows in public repositories after 60 days without repository activity. Content-based bot commits do not guarantee activity during a long period with no source changes. Check that the workflow remains enabled; re-enable it and run it manually if GitHub pauses it. The last deployed site remains online while its data stops refreshing. Review [GitHub's schedule event documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule) when deciding whether this cadence meets your needs.
 
 ## Using an always-on Jetson
 

@@ -7,15 +7,17 @@
 A research companion to **Eigen-Politics: A Spectral Analysis of the US Senate**  
 **Maximilian Chelminski · Master's thesis · 2026**
 
-[Read the thesis](<2026 Master's Thesis.pdf>) · [Explore the method](docs/METHODOLOGY.md) · [Run locally](#run-locally) · [Hosting guide](docs/DEPLOYMENT.md)
+[Explore online](https://maxchelminski.github.io/eigenpolitics/) · [Read the thesis](<2026 Master's Thesis.pdf>) · [Explore the method](docs/METHODOLOGY.md) · [Run locally](#run-locally)
 
 </div>
 
 ![Eigenpolitics explorer showing the Senate's voting structure and historical spectral analysis](docs/images/explorer-desktop.png)
 
-What can the geometry of Senate voting reveal about political division? Eigenpolitics turns roll-call records into a weighted network, then uses its graph Laplacian to examine connectivity, voting blocs, and the members positioned between them.
+Eigenpolitics is an interactive atlas of U.S. Senate voting networks across **119 Congresses**. It applies spectral graph theory to roll-call records to examine political division, network bottlenecks, and brokerage, with a reproducible Python pipeline and a browser-based explorer.
 
-This repository brings together the original thesis and analysis scripts, an interactive research explorer, and a reproducible pipeline for refreshing the underlying Voteview data. It runs locally without a frontend build or account. An optional GitHub Pages workflow can publish the site and refresh its current-Congress analysis daily.
+Developed from Maximilian Chelminski's 2026 master's thesis, the project brings the original research together with maintained analysis and interactive visualizations. Explore spectral geometry, follow returning senators through aligned maps, inspect voting ties, and trace results to their source data and methodology. It also runs locally without a frontend build or account.
+
+The [online explorer](https://maxchelminski.github.io/eigenpolitics/) is configured for GitHub Pages, with automatic Voteview refreshes **every six hours**. These are periodically updated source snapshots; their freshness depends on upstream publication and successful refresh runs. [Deployment and refresh details →](docs/DEPLOYMENT.md)
 
 > **Research status:** The thesis and original scripts are preserved as supplied. The explorer is a maintained companion with refreshed inputs and documented implementation choices. Its results are **not an exact reproduction of the thesis's May 5, 2026 data snapshot**.
 
@@ -187,13 +189,13 @@ eigenpolitics/
 └── CITATION.cff
 ```
 
-## Host it later, without a domain
+## Hosting and automatic updates
 
-GitHub Pages can host this static site at a project address such as `https://<owner>.github.io/<repository>/`. A purchased domain is optional, and public repositories can use Pages on GitHub Free. See [GitHub's Pages documentation](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages).
+The project address is **https://maxchelminski.github.io/eigenpolitics/**. GitHub Pages serves the static explorer; GitHub Actions runs the Python refresh pipeline. A custom domain and an always-on home computer are optional.
 
-The included publishing workflow is **disabled by a repository-variable gate** until you opt in. Once enabled, it refreshes the current and preceding Congresses, checks the pipeline, and deploys the site on a daily schedule as well as on pushes to `main`. Refreshing the preceding term also captures its final votes after a Congress rollover.
+The publishing workflow runs every six hours and on manual dispatch when `ENABLE_PAGES=true`. It refreshes the current and preceding Congresses, recalculates the full alignment chain, and preserves changed source snapshots in Git. Pushes to `main` deploy the checked-in snapshot without requiring an upstream download. Failed refreshes leave the previous deployed site available.
 
-Follow [the deployment guide](docs/DEPLOYMENT.md) to publish and enable updates. The files in this repository do not themselves create a GitHub repository or a hosted site. Start the optional local refresh loop explicitly with `--refresh-hours`.
+See [the deployment guide](docs/DEPLOYMENT.md) for setup, refresh logs, scheduler limitations, and pausing updates. Pull the latest `main` before editing locally because successful data refreshes can add automated commits. Forks must configure their own Pages site and explicitly enable the repository variable. Start the optional local refresh loop separately with `--refresh-hours`.
 
 ## Validation and contributions
 

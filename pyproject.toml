@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "eigenpolitics"
 version = "1.0.0"
-description = "Reproducible spectral analysis of United States Senate roll-call networks"
+description = "Interactive spectral analysis of U.S. Senate voting networks with shared-senator alignment and reproducible data refreshes"
 requires-python = ">=3.10"
 dependencies = [
   "numpy>=1.26,<3",

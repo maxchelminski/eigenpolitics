@@ -6,7 +6,7 @@ on:
     branches: [main]
   schedule:
     # Opt-in only: the job is skipped until ENABLE_PAGES is set to "true".
-    - cron: "23 10 * * *"
+    - cron: "23 */6 * * *"
 
 permissions:
   contents: read
@@ -17,11 +17,13 @@ concurrency:
 
 jobs:
   publish:
-    if: ${{ vars.ENABLE_PAGES == 'true' }}
+    if: ${{ vars.ENABLE_PAGES == 'true' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
-      contents: read
+      # Scheduled refreshes preserve successful snapshots in Git, so Congress
+      # rollovers do not depend on an evictable Actions cache.
+      contents: write
       pages: write
       id-token: write
     environment:
@@ -29,9 +31,12 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          # A queued run uses the latest main, never an older push snapshot.
+          ref: main
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
@@ -39,22 +44,33 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Run regression tests
         run: python -m unittest discover -s tests -v
-      - name: Restore validated Voteview source history
-        uses: actions/cache@v4
-        with:
-          path: .cache/voteview
-          key: voteview-source-v1-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: voteview-source-v1-
+      - name: Validate the checked-in snapshot
+        run: python scripts/refresh_pages.py --check
       - name: Refresh the current and previous Senate
-        # Every job starts from the checked-in history. Refresh the prior term
-        # too so its final votes are retained after a Congress rollover.
+        if: ${{ github.event_name != 'push' }}
+        id: refresh
+        # A push can publish the reviewed snapshot even during a Voteview outage.
+        # Scheduled/manual runs fetch only six CSVs, then realign all history.
+        # Any failed refresh stops this job and leaves the previous site live.
+        run: python scripts/refresh_pages.py
+      - name: Check for concurrent source changes
+        # Never overwrite another push or publish a known superseded snapshot.
         run: |
-          PREVIOUS=$(python -c "from eigenpolitics.analysis import current_congress; print(max(1, current_congress() - 1))")
-          python scripts/refresh_data.py --congress current "$PREVIOUS" --refresh
-      - name: Rebuild full history from verified caches
-        # Missing or evicted caches are fetched again. This preserves updated
-        # historical inputs across jobs without committing generated data.
-        run: python scripts/refresh_data.py
+          git fetch origin main
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+            echo "::error::main changed during this run. Retry from the latest source; no snapshot was overwritten or deployed."
+            exit 1
+          fi
+      - name: Preserve a changed data snapshot
+        if: ${{ steps.refresh.outputs.changed == 'true' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- site/data
+          git commit -m "Refresh Senate voting data"
+          # A normal push fails safely if main changed; never force-push.
+          # GITHUB_TOKEN pushes do not trigger a recursive workflow run.
+          git push origin HEAD:main
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload the static site

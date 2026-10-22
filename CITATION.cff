@@ -5,15 +5,18 @@ message: >-
   when reporting results from the refreshed research companion.
 type: software
 title: "Eigenpolitics: Research Companion to Eigen-Politics"
+repository-code: "https://github.com/maxchelminski/eigenpolitics"
+url: "https://maxchelminski.github.io/eigenpolitics/"
 authors:
   - family-names: Chelminski
     given-names: Maximilian
 abstract: >-
-  A local-first interactive research companion and refreshable data pipeline
-  for spectral analysis of United States Senate roll-call voting networks.
-  The repository preserves the original 2026 Master's thesis and analysis
-  scripts. Refreshed companion results are not an exact reproduction of the
-  original thesis snapshot.
+  An interactive atlas of U.S. Senate voting networks across 119 Congresses,
+  with original and shared-senator-aligned spectral maps, graph connectivity,
+  brokerage, and a reproducible Voteview refresh pipeline. Developed from
+  Maximilian Chelminski's 2026 master's thesis, the repository preserves the
+  original research alongside a maintained companion. Refreshed results are
+  not an exact reproduction of the original thesis snapshot.
 keywords:
   - spectral graph theory
   - United States Senate
