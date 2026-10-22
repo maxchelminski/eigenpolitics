@@ -7,6 +7,7 @@ name = "eigenpolitics"
 version = "1.0.0"
 description = "Interactive spectral analysis of U.S. Senate voting networks with shared-senator alignment and reproducible data refreshes"
 requires-python = ">=3.10"
+license = {file = "LICENSE"}
 dependencies = [
   "numpy>=1.26,<3",
   "pandas>=2.2,<3",

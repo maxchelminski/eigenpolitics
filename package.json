@@ -2,6 +2,7 @@
   "name": "eigenpolitics-explorer",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT",
   "description": "Optional browser verification for the buildless Eigenpolitics research site",
   "scripts": {
     "test:browser": "node tests/browser-smoke.cjs",

@@ -219,4 +219,4 @@ Voteview's requested source citation is:
 
 This project is not affiliated with or endorsed by Voteview or the United States Senate.
 
-**Rights:** The original thesis and custom code are provided without a selected open-source license. Public visibility does not grant unrestricted reuse. The author can add an appropriate license before public release; third-party data remains subject to its own attribution and use terms.
+**Rights:** Original software and project documentation are licensed under the [MIT License](LICENSE). The thesis manuscripts, including the website PDF, are excluded and retain their reserved rights. Voteview data and other third-party material retain their own rights and attribution. See [Licensing and rights](LICENSING.md) for the scope and exclusions.

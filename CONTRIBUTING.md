@@ -29,4 +29,4 @@ The JavaScript check requires Node.js; running the site itself does not. For int
 
 ## Rights and attribution
 
-No open-source license has been selected for the project's original thesis or custom code. Ask the author before redistributing or incorporating it into another project. Third-party data retains its own terms and attribution requirements; see [the methodology](docs/METHODOLOGY.md). Do not add a license on someone else's behalf.
+Original software and project documentation are licensed under the [MIT License](LICENSE). The thesis manuscripts and website PDF are excluded from that grant and retain their reserved rights. Third-party data and dependencies retain their own rights and attribution requirements; see [Licensing and rights](LICENSING.md) for the complete scope. Only contribute material you have the right to provide under the applicable license.

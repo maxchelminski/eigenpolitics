@@ -4,6 +4,7 @@ message: >-
   separately for its source data, and include the Congress and retrieval date
   when reporting results from the refreshed research companion.
 type: software
+license: MIT
 title: "Eigenpolitics: Research Companion to Eigen-Politics"
 repository-code: "https://github.com/maxchelminski/eigenpolitics"
 url: "https://maxchelminski.github.io/eigenpolitics/"
